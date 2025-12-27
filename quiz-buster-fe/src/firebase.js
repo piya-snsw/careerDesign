@@ -1,15 +1,17 @@
 import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBkOnzPre6B50Z-S8HBI3kcAU_Qj4MFVbA",
-  authDomain: "quiz-buster-fe-dev.firebaseapp.com",
-  projectId: "quiz-buster-fe-dev",
-  storageBucket: "quiz-buster-fe-dev.firebasestorage.app",
-  messagingSenderId: "540101385554",
-  appId: "1:540101385554:web:ef590f6b1ff2bbd59dee8b",
-  measurementId: "G-GL8S4TW92L"
+  apiKey: "AIzaSyDf08T7zK8F6mVhYF3P9Q4pXl71ToWyEI0",
+  authDomain: "quiz-buster-6f456.firebaseapp.com",
+  projectId: "quiz-buster-6f456",
+  storageBucket: "quiz-buster-6f456.firebasestorage.app",
+  messagingSenderId: "1026025613924",
+  appId: "1:1026025613924:web:ef0f96108db42c0891cd71",
 };
 
 const app = initializeApp(firebaseConfig);
+
+export const auth = getAuth(app);
 export const db = getFirestore(app);

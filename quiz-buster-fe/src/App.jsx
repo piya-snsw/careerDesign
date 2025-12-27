@@ -1,46 +1,86 @@
-import { useEffect, useState } from "react";
-import { db } from "./firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { useEffect } from "react";
+import { auth, db } from "./firebase";
+
+import {
+  signInAnonymously,
+  GoogleAuthProvider,
+  signInWithPopup,
+  onAuthStateChanged,
+} from "firebase/auth";
+
+import {
+  doc,
+  setDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
 function App() {
-  const [question, setQuestion] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // 🔹 匿名ログイン
+  const loginAnonymously = async () => {
+    await signInAnonymously(auth);
+  };
 
+  // 🔹 Googleログイン
+  const loginWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    await signInWithPopup(auth, provider);
+  };
+
+  // 🔹 Firestore保存
+  const saveUser = async (user) => {
+    const ref = doc(db, "users", user.uid);
+
+    await setDoc(
+      ref,
+      {
+        uid: user.uid,
+        displayName: user.displayName ?? "匿名ユーザー",
+        isAnonymous: user.isAnonymous,
+        lastLoginAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  };
+
+  // 🔹 認証監視
   useEffect(() => {
-    const fetchQuestion = async () => {
-      const docRef = doc(db, "questions", "q1");
-      const docSnap = await getDoc(docRef);
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) return;
 
-      if (docSnap.exists()) {
-        setQuestion(docSnap.data());
-      } else {
-        console.log("問題が見つかりません");
+      await saveUser(user);
+
+      // ⭐ uidごとに1回だけ表示
+      const dialogKey = `login-dialog-shown-${user.uid}`;
+      const hasShown = localStorage.getItem(dialogKey);
+
+      if (!hasShown) {
+        if (user.isAnonymous) {
+          alert("匿名ログインに成功しました");
+        } else {
+          alert(`Googleログイン成功！\n${user.displayName}`);
+        }
+
+        localStorage.setItem(dialogKey, "true");
       }
-      setLoading(false);
-    };
+    });
 
-    fetchQuestion();
+    return () => unsub();
   }, []);
 
-  if (loading) {
-    return <div>読み込み中...</div>;
-  }
-
-  if (!question) {
-    return <div>問題データがありません</div>;
-  }
-
   return (
-    <div style={{ padding: "20px" }}>
-      <h1>早押しクイズ準備中 🚀</h1>
+    <div style={{ padding: 20 }}>
+      <h1>Quiz Buster</h1>
 
-      <h2>{question.text}</h2>
+      <button onClick={loginAnonymously}>
+        匿名ログイン
+      </button>
 
-      <ul>
-        {question.options.map((opt, index) => (
-          <li key={index}>{opt}</li>
-        ))}
-      </ul>
+      <br /><br />
+
+      <button onClick={loginWithGoogle}>
+        Googleログイン
+      </button>
     </div>
   );
 }
