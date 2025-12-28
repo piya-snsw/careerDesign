@@ -159,7 +159,7 @@ const Room = ({ user }) => {
           {roomData.status === "result" && (
             <div className="text-center animate-in zoom-in duration-300">
               <p className={`text-6xl font-black mb-8 ${selectedAnswer === question.answerIndex ? "text-green-500" : "text-red-500"}`}>
-                {selectedAnswer === question.answerIndex ? "CORRECT!" : "WRONG"}
+                {selectedAnswer === question.answerIndex ? "正解!" : "不正解"}
               </p>
               <button 
                 onClick={handleNextOrFinish} 

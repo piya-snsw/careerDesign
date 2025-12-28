@@ -7,65 +7,66 @@ import {
 
 export const useWaiting = (user) => {
   const [waitingUsers, setWaitingUsers] = useState([]);
-  const [isFull, setIsFull] = useState(false);
 
   useEffect(() => {
     if (!user) return;
 
     const userRef = doc(db, "waitingUsers", user.uid);
 
-    // 1. 参加と同時に「掃除」も行う
-    const joinAndCleanup = async () => {
-      // 5分以上更新がないユーザーを古いとみなす（ゾンビ対策）
+    // --- 1. 放置ユーザーの掃除ロジック ---
+    const cleanupGhostUsers = async () => {
       const now = new Date();
-      const threshold = new Date(now.getTime() - 5 * 60 * 1000); 
-
-      const snap = await getDocs(collection(db, "waitingUsers"));
+      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
       
-      // 掃除：古いデータを消す（もし残っていたら）
-      snap.docs.forEach(async (d) => {
+      const snap = await getDocs(collection(db, "waitingUsers"));
+      snap.forEach(async (d) => {
         const data = d.data();
-        if (data.joinedAt && data.joinedAt.toDate() < threshold) {
+        // 5分以上更新がないユーザーを削除
+        if (data.lastActive && data.lastActive.toDate() < fiveMinutesAgo) {
           await deleteDoc(doc(db, "waitingUsers", d.id));
         }
       });
-
-      // 自分の参加処理
-      const currentUsers = snap.docs.filter(d => d.id !== user.uid);
-      if (currentUsers.length < 4) {
-        await setDoc(userRef, {
-          uid: user.uid,
-          displayName: user.displayName || "ゲスト",
-          joinedAt: serverTimestamp(),
-        });
-        setIsFull(false);
-      } else {
-        setIsFull(true);
-      }
     };
 
-    joinAndCleanup();
-
-    // 2. ブラウザを閉じるときの処理（visibilitychangeが最近の主流です）
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        // 完全に消える保証はないが、タブ切り替えや最小化でも動く
-        deleteDoc(userRef);
-      }
+    // --- 2. 自分の生存報告 (Heartbeat) ---
+    const updateHeartbeat = async () => {
+      await setDoc(userRef, {
+        uid: user.uid,
+        displayName: user.displayName || "ゲスト",
+        lastActive: serverTimestamp(), // ここを常に更新
+      }, { merge: true });
     };
-    window.addEventListener("visibilitychange", handleVisibilityChange);
 
+    // 初期実行
+    cleanupGhostUsers();
+    updateHeartbeat();
+
+    // 操作検知：マウス移動やクリックがあったら「活動中」とみなす
+    const handleActivity = () => {
+      // 負荷軽減のため、30秒に1回程度更新するなどの調整も可能
+      updateHeartbeat();
+    };
+    window.addEventListener("mousedown", handleActivity);
+
+    // --- 3. ブラウザを閉じた時の処理 ---
+    const handleUnload = () => {
+      // 100%ではないが、タブを閉じる際に削除命令を送る
+      deleteDoc(userRef);
+    };
+    window.addEventListener("beforeunload", handleUnload);
+
+    // リアルタイムリスナー
     const unsub = onSnapshot(collection(db, "waitingUsers"), (snap) => {
-      const users = snap.docs.map(doc => doc.data());
-      setWaitingUsers(users);
+      setWaitingUsers(snap.docs.map(d => d.data()));
     });
 
     return () => {
-      window.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("mousedown", handleActivity);
+      window.removeEventListener("beforeunload", handleUnload);
       deleteDoc(userRef);
       unsub();
     };
   }, [user]);
 
-  return { waitingUsers, isFull };
+  return { waitingUsers };
 };
