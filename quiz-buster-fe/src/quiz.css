@@ -1,0 +1,67 @@
+.card {
+  background: white;
+  border-radius: 24px;
+  padding: 2.5rem;
+  box-shadow: 0 10px 15px rgba(0,0,0,0.05);
+}
+
+.category-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 1rem;
+  font-weight: 700;
+}
+
+.question-text {
+  font-size: 1.2rem;
+  margin-bottom: 2rem;
+  font-weight: 700;
+}
+
+.choice-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 0.8rem;
+  padding: 1.1rem 1.5rem;
+  border-radius: 16px;
+  border: 2px solid #e2e8f0;
+  background: #f8fafc;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.choice-btn.correct {
+  background: #ecfdf5;
+  border-color: #10b981;
+}
+
+.choice-btn.wrong {
+  background: #fff1f2;
+  border-color: #f43f5e;
+}
+
+.explanation-box {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f0f9ff;
+  border-left: 4px solid #0284c7;
+}
+
+.review-item {
+  margin-bottom: 2rem;
+}
+
+.review-q {
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.btn.primary {
+  background: #0284c7;
+  color: white;
+  border-radius: 14px;
+  padding: 1rem;
+  font-weight: 700;
+  border: none;
+}
