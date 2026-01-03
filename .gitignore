@@ -8,6 +8,7 @@ node_modules/
 # ============================================
 dist/
 dist-ssr/
+build/
 
 # ============================================
 # 環境変数（機密情報）
@@ -17,6 +18,7 @@ dist-ssr/
 .env.*.local
 .env.development.local
 .env.production.local
+scripts/
 
 # ============================================
 # ログファイル
@@ -35,6 +37,8 @@ lerna-debug.log*
 .vite/
 .vite-temp/
 *.local
+out.txt
+.eslintcache
 
 # ============================================
 # Firebase

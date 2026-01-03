@@ -18,3 +18,5 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider(); // 追加
+
+console.log('✅ Firebase initialized:', { auth, db });
