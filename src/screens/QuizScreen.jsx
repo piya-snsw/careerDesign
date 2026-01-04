@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react'; // useStateを追加
 import { pressButton, submitAnswer } from '../services/roomService';
 import { runBotIfNeeded, runBotAnswerIfNeeded } from '../services/botLogic';
 import { useCountdown } from '../hooks/useCountdown';
@@ -8,47 +8,58 @@ export default function QuizScreen({ room, user }) {
   const roomId = room?.id;
   const isHost = room?.hostId === user.uid;
   const currentQ = room.quiz?.questions?.[room.quiz.currentIndex];
-
   const buzzerUid = room.buzzer?.uid;
   const isBuzzer = buzzerUid === user.uid;
-
   const buzzerUser = room.members?.[buzzerUid];
   const buzzerName = buzzerUser?.name || (buzzerUser?.isBot ? '🤖 Bot' : '👤 Player');
-
   const seconds = useCountdown(room.buzzer?.limitAt, 5000);
 
-  // ボットの思考ロジック
+  // --- レスポンシブ判定 ---
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 850);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 850);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // ボットの思考ロジック（人間が全員間違えたら即回答）
   useEffect(() => {
     if (!room || !isHost || room.status !== 'playing') return;
 
+    const members = room.members || {};
+    const answeredUsers = room.answeredUsers || [];
+    const humans = Object.values(members).filter(m => !m.isBot);
+    const activeHumans = humans.filter(h => !answeredUsers.includes(h.uid));
+
+    // --- 1. 【超速】人間が全滅した時の即時実行 ---
+    if (!buzzerUid && humans.length > 0 && activeHumans.length === 0) {
+      console.log("⚡ 人間全滅！ボットが即座にボタンを押します");
+      runBotIfNeeded(roomId, room);
+      // ここで即実行されるので、下のタイマーを待たずにボタンが押されます
+    }
+
+    // --- 2. 【通常】ボットの思考タイマー ---
     const botTimer = setInterval(() => {
       if (!buzzerUid) {
+        // ★ ここがポイント：人間が残っている時は、以前の 2500ms(2.5秒) のペースを維持
         runBotIfNeeded(roomId, room);
       } else if (room.members?.[buzzerUid]?.isBot) {
+        // ボットがボタンを押した後の「回答入力」は 2.5秒だと遅いので、ここは早めに
         runBotAnswerIfNeeded(roomId, room);
       }
-    }, 2500);
-
-    // 人間（!isBot）が一人もいない場合はボットを動かさない
-    const hasHuman = Object.values(room.members).some(m => !m.isBot);
-    if (!hasHuman) return;
+    }, 2500); // ★ ここを 2500 に戻すことで、通常の回答速度を落とします
 
     return () => clearInterval(botTimer);
-  }, [room, isHost, roomId, buzzerUid]);
 
+  }, [room.answeredUsers, buzzerUid, isHost, roomId, room.status]);
 
-  // タイムアップ処理
   useEffect(() => {
-    if (isBuzzer && seconds === 0) {
-      handleAnswer("時間切れ");
-    }
+    if (isBuzzer && seconds === 0) handleAnswer("時間切れ");
   }, [isBuzzer, seconds]);
 
   const handleBuzz = () => {
     const answeredUsers = room.answeredUsers || [];
-    if (!buzzerUid && !answeredUsers.includes(user.uid)) {
-      pressButton(roomId, user.uid);
-    }
+    if (!buzzerUid && !answeredUsers.includes(user.uid)) pressButton(roomId, user.uid);
   };
 
   const handleAnswer = (optionText) => {
@@ -57,37 +68,27 @@ export default function QuizScreen({ room, user }) {
   };
 
   if (!room || !currentQ) return <div style={loadingStyle}>Loading...</div>;
+  const hasAnswered = (room.answeredUsers || []).includes(user.uid);
 
-  const answeredUsers = room.answeredUsers || [];
-  const hasAnswered = answeredUsers.includes(user.uid);
-
-return (
-    <div style={layoutWrapperStyle}>
-      {/* 左サイドバー: リアルタイムランキング */}
-      <aside style={sidebarStyle}>
-        <LiveRanking room={room} />
-      </aside>
-
-      {/* メインエリア: クイズ本体 */}
-      <main style={mainContentStyle}>
-        {/* 上部の情報 */}
+  return (
+    <div style={layoutWrapperStyle(isMobile)}>
+      {/* 1. メイン：クイズ（スマホで一番上、PCで右側） */}
+      <main style={mainContentStyle(isMobile)}>
         <div style={headerInfoStyle}>
           <span style={roundBadgeStyle}>ROUND {room.quiz.currentIndex + 1} / 10</span>
         </div>
 
-        {/* 問題文カード（高さを少し確保して中央に配置） */}
-        <div style={questionCardStyle}>
+        <div style={questionCardStyle(isMobile)}>
           {currentQ.text || currentQ.q}
         </div>
 
-        {/* アクションエリア（ここが画面中央〜下部を占める） */}
-        <div style={actionAreaStyle}>
+        <div style={actionAreaStyle(isMobile)}>
           {!buzzerUid ? (
             <div style={buzzWrapperStyle}>
               <button
                 onClick={handleBuzz}
                 disabled={hasAnswered}
-                style={getBuzzButtonStyle(hasAnswered)}
+                style={getBuzzButtonStyle(hasAnswered, isMobile)}
               >
                 {hasAnswered ? '✕' : 'PUSH!'}
               </button>
@@ -101,12 +102,12 @@ return (
                 <span style={flashLabelStyle}>YOUR TURN!</span>
                 <span style={timerValueStyle}>{seconds}s</span>
               </div>
-              <div style={optionsGridStyle}>
+              <div style={optionsGridStyle(isMobile)}>
                 {(currentQ.options || []).map((opt, i) => (
                   <button
                     key={i}
                     onClick={() => handleAnswer(opt)}
-                    style={optionButtonStyle(i)}
+                    style={optionButtonStyle(i, isMobile)}
                   >
                     {opt}
                   </button>
@@ -115,169 +116,125 @@ return (
             </div>
           ) : (
             <div style={otherThinkingStyle}>
-              <div style={buzzerUserBadgeStyle}>
-                {buzzerUser?.isBot ? '🤖' : '👤'} {buzzerName}
-              </div>
-              <p style={{ color: '#666', marginBottom: 15 }}>回答を待っています...</p>
+              <div style={buzzerUserBadgeStyle}>{buzzerName} 回答中...</div>
               <div style={waitTimerStyle}>{seconds}s</div>
             </div>
           )}
         </div>
       </main>
+
+      {/* 2. サイドバー：ランキング（スマホで一番下、PCで左側） */}
+      <aside style={sidebarStyle(isMobile)}>
+        <div style={rankingContainerStyle(isMobile)}>
+          <h4 style={rankingTitleStyle}>LIVE RANKING</h4>
+          <LiveRanking room={room} />
+        </div>
+      </aside>
     </div>
   );
 }
 
-// --- スタイル定義 ---
+// --- スタイル定義 (関数にして isMobile で切り替える) ---
 
-// --- スタイル定義 (不足分を全て補完) ---
-
-const layoutWrapperStyle = {
-    display: 'flex',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: '30px',
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: '20px',
-    alignItems: 'flex-start',
-    minHeight: 'calc(100vh - 100px)',
-};
-
-const sidebarStyle = {
-    flex: '1 1 280px',
-    maxWidth: '320px',
-    position: 'sticky',
-    top: '80px',
-};
-
-const mainContentStyle = {
-    flex: '2 1 450px',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    minHeight: '70vh',
-};
-
-const headerInfoStyle = {
-    marginBottom: '20px',
-    display: 'flex',
-    justifyContent: 'center',
-};
-
-const roundBadgeStyle = {
-    background: '#e3f2fd',
-    color: '#0056b3',
-    padding: '6px 16px',
-    borderRadius: '20px',
-    fontWeight: 'bold',
-    fontSize: '0.9rem',
-};
-
-const questionCardStyle = {
-    background: '#ffffff',
-    padding: '40px 30px',
-    borderRadius: '24px',
-    boxShadow: '0 10px 30px rgba(0,0,0,0.06)',
-    fontSize: '1.6rem',
-    fontWeight: 'bold',
-    lineHeight: '1.6',
-    color: '#2c3e50',
-    marginBottom: '40px',
-    borderLeft: '12px solid #0056b3',
-    minHeight: '180px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-};
-
-const actionAreaStyle = {
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    minHeight: '350px',
-};
-
-// ★今回のエラー原因：buzzWrapperStyle を定義
-const buzzWrapperStyle = {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '20px',
-};
-
-const buzzHintStyle = {
-    color: '#6c757d',
-    fontWeight: 'bold',
-    fontSize: '0.95rem',
-};
-
-const answerSelectionStyle = {
-    animation: 'fadeIn 0.3s',
-};
-
-const timerNoticeStyle = {
-    marginBottom: '20px',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: '12px',
-};
-
-const flashLabelStyle = { color: '#d32f2f', fontWeight: '900', fontSize: '1.2rem' };
-const timerValueStyle = { fontSize: '2.5rem', fontWeight: '900', color: '#212529' };
-
-const optionsGridStyle = {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '20px',
-    maxWidth: '600px',
-    margin: '0 auto',
-};
-
-const otherThinkingStyle = {
-    background: '#fff',
-    padding: '40px 20px',
-    borderRadius: '24px',
-    border: '2px dashed #dee2e6',
-};
-
-const buzzerUserBadgeStyle = { fontSize: '1.4rem', fontWeight: 'bold', color: '#d32f2f', marginBottom: '10px' };
-const waitTimerStyle = { fontSize: '3rem', fontWeight: '900', color: '#dee2e6' };
-const loadingStyle = { padding: '50px', fontSize: '1.2rem', color: '#6c757d' };
-
-// getBuzzButtonStyle と optionButtonStyle は関数形式なのでそのまま維持
-const getBuzzButtonStyle = (used) => ({
-    width: '180px',
-    height: '180px',
-    fontSize: '2.2rem',
-    fontWeight: '900',
-    borderRadius: '50%',
-    border: 'none',
-    cursor: used ? 'not-allowed' : 'pointer',
-    background: used ? '#ced4da' : 'linear-gradient(145deg, #ff5f5f, #e60000)',
-    color: 'white',
-    boxShadow: used ? 'inset 4px 4px 8px #adb5bd' : '0 10px 0 #b71c1c, 0 15px 25px rgba(0,0,0,0.2)',
-    transition: 'all 0.1s',
-    transform: used ? 'translateY(10px)' : 'none',
-    outline: 'none',
+const layoutWrapperStyle = (isMobile) => ({
+  display: 'flex',
+  flexDirection: isMobile ? 'column' : 'row', // スマホなら縦並び
+  gap: '20px',
+  maxWidth: '1100px',
+  margin: '0 auto',
+  padding: isMobile ? '10px' : '20px',
 });
 
-const optionButtonStyle = (i) => {
-    const colors = ['#007AFF', '#34C759', '#FF9500', '#AF52DE'];
-    return {
-        padding: '24px 10px',
-        fontSize: '1.1rem',
-        fontWeight: 'bold',
-        color: 'white',
-        backgroundColor: colors[i % 4],
-        border: 'none',
-        borderRadius: '16px',
-        cursor: 'pointer',
-        boxShadow: '0 4px 0 rgba(0,0,0,0.15)',
-        minHeight: '85px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-    };
+const mainContentStyle = (isMobile) => ({
+  flex: '1',
+  order: isMobile ? 1 : 2, // スマホでクイズを上に、PCで右に
+  width: '100%',
+});
+
+const sidebarStyle = (isMobile) => ({
+  width: isMobile ? '100%' : '280px',
+  order: isMobile ? 2 : 1, // スマホでランキングを下に、PCで左に
+  position: isMobile ? 'static' : 'sticky',
+  top: '20px',
+});
+
+const questionCardStyle = (isMobile) => ({
+  background: '#ffffff',
+  padding: isMobile ? '25px 15px' : '40px 30px',
+  borderRadius: '16px',
+  boxShadow: '0 4px 15px rgba(0,0,0,0.05)',
+  fontSize: isMobile ? '1.1rem' : '1.5rem',
+  fontWeight: 'bold',
+  lineHeight: '1.6',
+  color: '#202124',
+  marginBottom: '20px',
+  borderLeft: '8px solid #1a73e8',
+  textAlign: 'center',
+  minHeight: isMobile ? '100px' : '160px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+});
+
+const rankingContainerStyle = (isMobile) => ({
+  background: isMobile ? 'transparent' : '#fff',
+  padding: isMobile ? '10px' : '20px',
+  borderRadius: '12px',
+  border: isMobile ? 'none' : '1px solid #e0e0e0',
+  marginTop: isMobile ? '40px' : '0', // スマホで少し距離を置く
+});
+
+const optionsGridStyle = (isMobile) => ({
+  display: 'grid',
+  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', // スマホなら1列、PCなら2列
+  gap: '12px',
+  maxWidth: '600px',
+  margin: '0 auto',
+});
+
+const getBuzzButtonStyle = (used, isMobile) => ({
+  width: isMobile ? '140px' : '180px',
+  height: isMobile ? '140px' : '180px',
+  fontSize: isMobile ? '1.5rem' : '2.2rem',
+  fontWeight: '900',
+  borderRadius: '50%',
+  border: 'none',
+  cursor: used ? 'not-allowed' : 'pointer',
+  background: used ? '#dadce0' : '#d93025',
+  color: 'white',
+  boxShadow: used ? 'none' : '0 8px 0 #a50e0e, 0 12px 20px rgba(0,0,0,0.2)',
+  transition: 'transform 0.1s',
+  transform: used ? 'translateY(8px)' : 'none',
+  outline: 'none',
+});
+
+const optionButtonStyle = (i, isMobile) => {
+  const colors = ['#1a73e8', '#34a853', '#f9ab00', '#9334e6'];
+  return {
+    padding: isMobile ? '16px' : '24px',
+    fontSize: isMobile ? '0.95rem' : '1.1rem',
+    fontWeight: 'bold',
+    color: 'white',
+    backgroundColor: colors[i % 4],
+    border: 'none',
+    borderRadius: '12px',
+    cursor: 'pointer',
+    minHeight: isMobile ? '60px' : '80px',
+  };
 };
+
+// その他の固定スタイル
+const headerInfoStyle = { marginBottom: '15px', display: 'flex', justifyContent: 'center' };
+const roundBadgeStyle = { background: '#e8f0fe', color: '#1967d2', padding: '4px 12px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem' };
+const buzzWrapperStyle = { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' };
+const buzzHintStyle = { color: '#5f6368', fontSize: '0.85rem', fontWeight: '500' };
+const rankingTitleStyle = { fontSize: '0.8rem', color: '#5f6368', marginBottom: '10px', textAlign: 'center', letterSpacing: '1px' };
+const actionAreaStyle = (isMobile) => ({ minHeight: isMobile ? '280px' : '350px', display: 'flex', flexDirection: 'column', justifyContent: 'center' });
+const timerNoticeStyle = { marginBottom: '15px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' };
+const flashLabelStyle = { color: '#d93025', fontWeight: '900', fontSize: '1rem' };
+const timerValueStyle = { fontSize: '2rem', fontWeight: '900', color: '#202124' };
+const otherThinkingStyle = { background: '#fff', padding: '30px 20px', borderRadius: '16px', border: '1px solid #e0e0e0', textAlign: 'center' };
+const buzzerUserBadgeStyle = { fontSize: '1.2rem', fontWeight: 'bold', color: '#d93025', marginBottom: '5px' };
+const waitTimerStyle = { fontSize: '2.5rem', fontWeight: '900', color: '#f1f3f4' };
+const loadingStyle = { padding: '50px', textAlign: 'center', color: '#5f6368' };
+const answerSelectionStyle = { width: '100%' };

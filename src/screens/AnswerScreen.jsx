@@ -48,7 +48,7 @@ export default function AnswerScreen({ room, user }) {
 
     return (
       <div style={{ ...containerStyle, background: isCorrect ? '#e8f5e9' : '#ffebee' }}>
-        <h1 style={{ fontSize: '4rem' }}>{isCorrect ? '⭕ 正解！' : '❌ 不正解...'}</h1>
+        <h1 style={{ fontSize: '3rem' }}>{isCorrect ? '⭕ 正解！' : '❌ 不正解...'}</h1>
         <div style={cardStyle}>
           <p>
             {member?.isBot ? '🤖' : '👤'} <strong>{displayName}</strong> の回答

@@ -45,39 +45,51 @@ export async function joinRoom(roomId, user) {
 }
 
 // --- 部屋から退出 (修正なし) ---
-export async function leaveRoom(roomId, uid) {
-  if (!roomId || !uid) return;
+export const leaveRoom = async (roomId, userId) => {
+  const roomRef = doc(db, 'rooms', roomId);
   
   try {
-    const ref = doc(db, 'rooms', roomId);
-    const snap = await getDoc(ref);
+    const snap = await getDoc(roomRef);
     if (!snap.exists()) return;
 
-    const data = snap.data();
-    const members = data.members || {};
+    const roomData = snap.data();
+    const members = { ...(roomData.members || {}) };
 
-    const humanMembers = Object.entries(members).filter(([id, m]) => !m.isBot && id !== uid);
+    // 1. 自分をメンバーから削除
+    delete members[userId];
 
-    if (humanMembers.length === 0) {
-      console.log('🗑️ No humans left. Deleting room including bots.');
-      await deleteDoc(ref);
-      return;
+    // 2. 「人間」が残っているか確認
+    const remainingHumans = Object.values(members).filter(m => !m.isBot);
+
+    if (remainingHumans.length === 0) {
+      // 人間が一人もいなくなった場合
+      console.log("人間がいなくなったため、ルームを完全リセットします。");
+      await updateDoc(roomRef, {
+        members: {},        // ボットも削除
+        activeCount: 0,     // ★ここを追加：カウントを0にする
+        hostId: null,       // ★ここを追加：ホストを不在にする
+        status: 'waiting',
+        "quiz.currentIndex": 0,
+        answeredUsers: [],
+        buzzer: null,
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      // まだ人間が残っている場合
+      const isHost = roomData.hostId === userId;
+      const nextHostId = isHost ? remainingHumans[0].uid : roomData.hostId;
+
+      await updateDoc(roomRef, {
+        members: members,
+        activeCount: remainingHumans.length, // ★ここを追加：残った人間の数を反映
+        hostId: nextHostId,
+        updatedAt: serverTimestamp()
+      });
     }
-
-    const updates = {
-      [`members.${uid}`]: deleteField()
-    };
-
-    if (data.hostId === uid) {
-      updates.hostId = humanMembers[0][0]; 
-      console.log('👑 Host transferred to human:', updates.hostId);
-    }
-
-    await updateDoc(ref, updates);
   } catch (error) {
-    console.error('Leave room error:', error);
+    console.error("退出処理に失敗:", error);
   }
-}
+};
 
 // --- 早押しボタン (修正なし) ---
 export async function pressButton(roomId, uid) {

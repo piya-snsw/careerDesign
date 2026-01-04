@@ -85,8 +85,10 @@ export default function Lobby({ user }) {
           {['room1', 'room2', 'room3', 'room4', 'room5'].map(id => {
             const room = rooms.find(r => r.id === id);
             const members = room?.members || {};
-            const playerCount = Object.values(members).length;
-            const hasHost = !!room?.hostId;
+            // ★修正：playerCount は members の数か、activeCount の大きい方を採用すると安全
+            const playerCount = Math.max(Object.keys(members).length, room?.activeCount || 0);
+            // ★修正：ホスト判定をより厳格に（hostIdがない、または人数が0ならホスト不在とみなす）
+            const hasHost = !!room?.hostId && playerCount > 0;
             const isFull = hasHost && playerCount >= 4;
             const isJoining = joining === id;
             const isMaintenance = room?.status === 'maintenance';
@@ -99,7 +101,7 @@ export default function Lobby({ user }) {
             if (isJoining) { label = '接続中...'; btnBg = '#bdc1c6'; }
             else if (isMaintenance) { label = 'メンテナンス中'; btnBg = '#70757a'; }
             else if (isPlaying) { label = '試合中'; btnBg = '#f9ab00'; }
-            else if (!hasHost) { label = '主催者として入る'; btnBg = '#34a853'; }
+            else if (!hasHost) { label = '主催者として入る'; btnBg = '#34a853'; isDisabled = isJoining; }
             else if (isFull) { label = '満員'; btnBg = '#dadce0'; }
 
             return (
