@@ -14,17 +14,18 @@ import QuizScreen from './screens/QuizScreen';
 import AnswerScreen from './screens/AnswerScreen';
 import ScoreScreen from './screens/ScoreScreen';
 
+
 // --- サブコンポーネント: ルームの論理制御 ---
 function RoomContainer({ user }) {
   const { roomId } = useParams();
   const navigate = useNavigate();
   const { room, loading: roomLoading } = useRoom(roomId);
-  const [isExiting, setIsExiting] = useState(false); // ★退室中フラグを追加
+  const [isExiting, setIsExiting] = useState(false);
 
   // 1. 自動入室ロジック
   useEffect(() => {
-    // ★退室中、または読み込み中なら何もしない
-    if (roomLoading || !user || !room || isExiting) return;
+    // スコア画面だろうが退室中だろうが、不要な書き込みを徹底排除
+    if (roomLoading || !user || !room || isExiting || room.status === 'score') return;
 
     if (room.status !== 'waiting' && !room.members[user.uid]) {
       alert('このゲームはすでに開始されているか、終了しています。');
@@ -62,12 +63,11 @@ function RoomContainer({ user }) {
       }
     };
     checkAndJoin();
-  }, [room, roomLoading, roomId, user, navigate, isExiting]); // ★isExitingを監視
+  }, [room, roomLoading, roomId, user, navigate, isExiting, room?.status]);
 
-  // 2. ホスト主張ロジック
+// 2. ホスト主張ロジック
   useEffect(() => {
-    // ★退室中はホストを主張しない
-    if (roomLoading || !room || room.hostId || isExiting) return;
+    if (roomLoading || !room || room.hostId || isExiting || room.status === 'score') return;
     const claimHost = async () => {
       try {
         const roomRef = doc(db, 'rooms', roomId);
@@ -78,12 +78,15 @@ function RoomContainer({ user }) {
       } catch (err) {}
     };
     claimHost();
-  }, [room, roomLoading, roomId, user.uid, isExiting]); // ★isExitingを監視
+  }, [room, roomLoading, roomId, user.uid, isExiting, room?.status]);
 
-  // 3. 退室ハンドラー
+  // 3. 退室ハンドラー（この関数をすべての画面に配る）
   const handleLeave = async () => {
+    // 多重クリック防止
+    if (isExiting) return;
+
     if (window.confirm('ロビーに戻りますか？')) {
-      setIsExiting(true); // ★まずフラグを立てて他のuseEffectを止める
+      setIsExiting(true); 
       try {
         console.log("🏃‍♂️ Starting exit process...");
         await leaveRoom(roomId, user.uid);
@@ -97,6 +100,16 @@ function RoomContainer({ user }) {
     }
   };
 
+  // 4. ブラウザバックやタブ閉じ対策（スコア画面でも実行）
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // スコア画面でも、ブラウザを閉じるときはデータを消す
+      leaveRoom(roomId, user.uid);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [roomId, user.uid]);
+
   if (roomLoading) return <div style={loadingStyle}>Loading room...</div>;
   if (!room) return <div style={loadingStyle}>Room not found.</div>;
 
@@ -108,7 +121,8 @@ function RoomContainer({ user }) {
         {room.status === 'countdown' && <CountdownOverlay room={room} user={user} />}
         {room.status === 'playing' && <QuizScreen room={room} user={user} />}
         {room.status === 'answer' && <AnswerScreen room={room} user={user} />}
-        {room.status === 'score' && <ScoreScreen room={room} user={user} />}
+        {/* ★ ScoreScreen にも onLeave={handleLeave} を渡すのがポイント！ */}
+        {room.status === 'score' && <ScoreScreen room={room} user={user} onLeave={handleLeave} />}
       </main>
     </div>
   );

@@ -53,47 +53,53 @@ export const leaveRoom = async (roomId, userId) => {
   const roomRef = doc(db, 'rooms', roomId);
   
   try {
-    // 1. まず自分を消す（これだけに集中する）
+    console.log(`🏃‍♂️ Leaving room: ${roomId}`);
+    
+    // 1. まず自分を削除
     await updateDoc(roomRef, {
       [`members.${userId}`]: deleteField(),
       updatedAt: serverTimestamp()
     });
-    
-    // 2. 確実に反映させるために最新の状態を取得
+
+    // 2. 最新の全データを取得して判定
     const snap = await getDoc(roomRef);
     if (!snap.exists()) return;
     const data = snap.data();
     
-    // 3. 自分を除いた残りの人間を判定
     const members = data.members || {};
-    const humanMembers = Object.entries(members).filter(([uid, m]) => !m.isBot && uid !== userId);
+    const memberEntries = Object.entries(members);
+    const humanMembers = memberEntries.filter(([uid, m]) => !m.isBot && uid !== userId);
 
+    // ★ ここが重要：人間が0人なら、部屋を完全に初期化する
     if (humanMembers.length === 0) {
-      // 人間が一人もいなくなったら完全初期化
+      console.log("🧹 Room is empty. Resetting to waiting status...");
       await updateDoc(roomRef, {
-        members: {},
+        status: 'waiting', // 待機状態に戻す
+        members: {},       // メンバーを空に
         activeCount: 0,
         hostId: null,
-        status: 'waiting',
-        quiz: { questions: [], currentIndex: 0 },
         buzzer: { uid: null, limitAt: null },
-        answeredUsers: []
-      });
-    } else if (data.hostId === userId) {
-      // 自分がホストだった場合は移譲
-      await updateDoc(roomRef, {
-        hostId: humanMembers[0][0],
-        activeCount: humanMembers.length
+        answeredUsers: [],
+        finalResults: null, // スコア結果を消去
+        quiz: { questions: [], currentIndex: 0 },
+        updatedAt: serverTimestamp()
       });
     } else {
-      // それ以外は人数だけ更新
-      await updateDoc(roomRef, {
-        activeCount: humanMembers.length
-      });
+      // まだ人間がいるなら、ホスト権限のチェックだけ行う
+      if (data.hostId === userId) {
+        await updateDoc(roomRef, {
+          hostId: humanMembers[0][0],
+          activeCount: humanMembers.length
+        });
+      } else {
+        await updateDoc(roomRef, {
+          activeCount: humanMembers.length
+        });
+      }
     }
   } catch (error) {
-    console.error("Leave error:", error);
-    throw error; // App.jsx 側でキャッチさせるために throw する
+    console.error("❌ Leave error:", error);
+    throw error;
   }
 };
 

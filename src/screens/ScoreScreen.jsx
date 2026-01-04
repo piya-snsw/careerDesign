@@ -1,66 +1,17 @@
-import React, { useEffect } from 'react';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import React from 'react';
 
-export default function ScoreScreen({ room, user }) {
+// Props に onLeave を追加
+export default function ScoreScreen({ room, user, onLeave }) {
   if (!room || !user) return null;
 
   const isHost = room.hostId === user.uid;
 
-  // ★ ポイント1: 表示用データの決定
-  // 既に固定された finalResults があればそれを使う。なければ現在の members をソートして使う。
+  // 表示用データの決定
   const displayResults = room.finalResults
     ? room.finalResults
     : Object.entries(room.members || {})
       .map(([uid, data]) => ({ uid, ...data }))
       .sort((a, b) => b.score - a.score);
-
-  const handleBackToLobby = async () => {
-    try {
-      const roomRef = doc(db, 'rooms', room.id);
-      const currentMembers = { ...room.members };
-
-      // 1. 自分を削除
-      delete currentMembers[user.uid];
-
-      // 2. 他に人間が残っているかチェック
-      const remainingHumans = Object.values(currentMembers);
-
-      if (remainingHumans.length > 0) {
-        // --- 他に人間がいる場合：自分だけ抜ける ---
-        await updateDoc(roomRef, {
-          members: currentMembers,
-          activeCount: remainingHumans.length,
-          hostId: isHost ? remainingHumans[0].uid : room.hostId, // ホスト移譲
-          updatedAt: serverTimestamp()
-        });
-      } else {
-        // --- 自分が最後の一人の場合：ルームを完全に初期化 ---
-        await updateDoc(roomRef, {
-          status: 'waiting',
-          hostId: null,
-          members: {},
-          activeCount: 0,
-          answeredUsers: [],
-          buzzer: null,
-          finalResults: null,
-          quiz: {
-            questions: [],
-            currentIndex: 0,
-            currentQuestion: null
-          },
-          updatedAt: serverTimestamp()
-        });
-      }
-
-      // ロビーへ戻る
-      window.location.href = '/lobby';
-
-    } catch (e) {
-      console.error("退出エラー:", e);
-      window.location.href = '/lobby';
-    }
-  };
 
   return (
     <div style={containerStyle}>
@@ -71,7 +22,6 @@ export default function ScoreScreen({ room, user }) {
 
       <div style={listContainerStyle}>
         {displayResults.map((data, index) => {
-          // displayResults は配列なので data.uid で判定
           const isMe = data.uid === user.uid;
           const medals = ['🥇', '🥈', '🥉'];
 
@@ -106,11 +56,11 @@ export default function ScoreScreen({ room, user }) {
         })}
       </div>
 
-      {/* おさらいセクション（変更なし） */}
+      {/* おさらいセクション */}
       <div style={reviewSectionStyle}>
         <h3 style={reviewTitleStyle}>📖 今回の問題をおさらい</h3>
         <div style={reviewListStyle}>
-          {room.quiz.questions.map((q, index) => (
+          {room.quiz?.questions?.map((q, index) => (
             <div key={index} style={reviewCardStyle}>
               <div style={questionHeaderStyle}>
                 <span style={questionNumberStyle}>Question {index + 1}</span>
@@ -126,7 +76,8 @@ export default function ScoreScreen({ room, user }) {
       </div>
 
       <div style={footerStyle}>
-        <button onClick={handleBackToLobby} style={buttonStyle}>
+        {/* ★ ここを handleBackToLobby ではなく onLeave に変更 */}
+        <button onClick={onLeave} style={buttonStyle}>
           {isHost ? '部屋を閉じてロビーへ' : 'ロビーへ戻る'}
         </button>
       </div>
