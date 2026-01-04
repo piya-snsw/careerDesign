@@ -1,134 +1,173 @@
-import { useEffect, useState } from 'react'; // ★ useStateを追加
-import { startCountdown, addBots } from '../services/quizService';
+import React from 'react';
+import { addBots, startCountdown } from '../services/quizService';
 
 export default function WaitingRoom({ room, user }) {
-  // --- 追加：表示用の秒数管理 ---
-  const [displaySeconds, setDisplaySeconds] = useState(20);
-
-  if (!room) return <div style={{ padding: 20 }}>Loading...</div>;
+  if (!room) return <div style={{ padding: 20, textAlign: 'center' }}>Loading...</div>;
 
   const roomId = room.id;
   const members = Object.entries(room.members || {});
   const playerCount = members.length;
   const isHost = room.hostId === user.uid;
 
-  // 1. 既存ロジック（そのまま維持）: 30秒後にボット追加＆開始
-  useEffect(() => {
-    if (!isHost || room.status !== 'waiting') return;
-
-    const timer = setTimeout(async () => {
-      const needed = 4 - playerCount;
+  // ホスト専用：ボットを補充して開始するハンドラー
+  const handleAddBotsManually = async () => {
+    const needed = 4 - playerCount;
+    try {
       if (needed > 0) {
-        try {
-          await addBots(roomId, needed);
-          await startCountdown(roomId);
-        } catch (err) {
-          console.error("❌ ボット追加エラー:", err);
-        }
+        // 不足分があればボットを追加
+        await addBots(roomId, needed);
       }
-    }, 20000); 
-
-    return () => clearTimeout(timer);
-  }, [isHost, playerCount, roomId, room.status]);
-
-  // 2. 表示用ロジック（追加）: 1秒ごとにカウントを減らすだけ
-  useEffect(() => {
-    if (playerCount >= 4 || room.status !== 'waiting') {
-      setDisplaySeconds(20); // 満員ならリセット
-      return;
+      // カウントダウン（試合開始）へ移行
+      await startCountdown(roomId);
+    } catch (err) {
+      console.error("開始エラー:", err);
     }
-
-    const interval = setInterval(() => {
-      setDisplaySeconds((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [playerCount, room.status]);
+  };
 
   return (
-    <div style={{ padding: 20, textAlign: 'center', fontFamily: 'sans-serif' }}>
-      <h2 style={{ color: '#1a73e8' }}>⏳ Waiting Room</h2>
+    <div style={containerStyle}>
+      <h2 style={{ color: '#1a73e8', marginBottom: '10px' }}>⏳ Waiting Room</h2>
       
-      {/* ★ カウントダウンの表示エリア */}
-      {playerCount < 4 && room.status === 'waiting' && (
-        <div style={countdownBannerStyle}>
-          🤖 ボット参戦まで あと <strong>{displaySeconds}</strong> 秒
-          <div style={progressBg}>
-            <div style={progressFill(displaySeconds)} />
-          </div>
-        </div>
-      )}
+      <p style={subtitleStyle}>
+        {playerCount < 4 
+          ? "他のプレイヤーを待っています..." 
+          : "全員揃いました！"}
+      </p>
 
-      <p style={{ fontSize: '1.4rem', margin: '10px 0', fontWeight: 'bold' }}>
+      <p style={{ fontSize: '1.4rem', margin: '20px 0', fontWeight: 'bold', color: '#3c4043' }}>
         Players: {playerCount} / 4
       </p>
 
-      <ul style={{ listStyle: 'none', padding: 0, maxWidth: 320, margin: '20px auto' }}>
+      {/* プレイヤーリスト */}
+      <div style={listWrapperStyle}>
         {members.map(([uid, data]) => (
-          <li
-            key={uid}
-            style={{
-              padding: '12px',
-              margin: '8px 0',
-              background: uid === room.hostId ? '#e8f0fe' : '#ffffff',
-              borderRadius: '12px',
-              border: uid === room.hostId ? '2px solid #1a73e8' : '1px solid #dee2e6',
-              fontWeight: uid === room.hostId ? 'bold' : 'normal',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-            }}
-          >
-            <span style={{ fontSize: '1.2rem' }}>{data.isBot ? '🤖' : '👤'}</span>
-            <span style={{ fontSize: '1.1rem' }}>
-              {data.name || (data.isBot ? `Bot ${uid.slice(0,3)}` : uid.slice(0, 8))}
-            </span>
-            {uid === room.hostId && <small style={{ fontSize: '0.7rem', color: '#1a73e8', marginLeft: 5 }}>[HOST]</small>}
-          </li>
+          <div key={uid} style={memberItemStyle(uid === room.hostId)}>
+            <span style={{ fontSize: '1.4rem' }}>{data.isBot ? '🤖' : '👤'}</span>
+            <div style={memberInfoStyle}>
+              <span style={{ fontSize: '1.1rem', fontWeight: '500' }}>
+                {data.name || (data.isBot ? 'Bot' : 'Player')}
+              </span>
+              {uid === room.hostId && <span style={hostBadgeStyle}>HOST</span>}
+            </div>
+            {uid === user.uid && <span style={youBadgeStyle}>YOU</span>}
+          </div>
         ))}
-      </ul>
+      </div>
 
-      <div style={{ marginTop: '30px' }}>
-        {playerCount < 4 ? (
-          <p style={{ color: '#666', lineHeight: '1.6' }}>
-            Waiting for more players...
-          </p>
+      {/* アクションエリア（ここにあるボタンのみに統合） */}
+      <div style={actionAreaStyle}>
+        {isHost ? (
+          <button 
+            onClick={handleAddBotsManually} 
+            style={activeButtonStyle}
+          >
+            {playerCount < 4 ? "🤖 ボットを補充して開始" : "🚀 ゲームを開始する"}
+          </button>
         ) : (
-          <p style={{ color: '#34a853', fontWeight: 'bold', fontSize: '1.2rem' }}>
-            ✅ All slots filled! Starting soon...
-          </p>
+          <div style={waitingTextStyle}>
+            ホストがゲームを開始するのを待っています...
+          </div>
         )}
       </div>
+      
+      {isHost && playerCount < 4 && (
+        <p style={{ fontSize: '0.8rem', color: '#9aa0a6', marginTop: '15px' }}>
+          ※ボタンを押すと不足人数にボットが割り当てられ、即座に開始します
+        </p>
+      )}
     </div>
   );
 }
 
-// --- シンプルな表示用スタイル ---
-const countdownBannerStyle = {
+// --- スタイル定義 ---
+const containerStyle = {
+  padding: '60px 20px',
+  textAlign: 'center',
+  fontFamily: '"Google Sans", Roboto, Arial, sans-serif',
+  maxWidth: '500px',
+  margin: '0 auto',
+  minHeight: '80vh',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center'
+};
+
+const subtitleStyle = {
+  color: '#5f6368',
+  fontSize: '1rem',
+  marginBottom: '20px'
+};
+
+const listWrapperStyle = {
+  width: '100%',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '12px'
+};
+
+const memberItemStyle = (isHost) => ({
+  padding: '16px 20px',
+  background: isHost ? '#e8f0fe' : '#ffffff',
+  borderRadius: '16px',
+  border: isHost ? '2px solid #1a73e8' : '1px solid #dadce0',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '15px',
+  boxShadow: '0 2px 5px rgba(0,0,0,0.03)',
+  width: '100%', // 横幅を固定
+  boxSizing: 'border-box'
+});
+
+const memberInfoStyle = {
+  flex: 1,
+  textAlign: 'left',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px'
+};
+
+const hostBadgeStyle = {
+  fontSize: '0.65rem',
+  color: '#1a73e8',
+  background: '#d2e3fc',
+  padding: '2px 8px',
+  borderRadius: '10px',
+  fontWeight: 'bold'
+};
+
+const youBadgeStyle = {
+  fontSize: '0.65rem',
+  color: '#5f6368',
+  background: '#f1f3f4',
+  padding: '2px 8px',
+  borderRadius: '10px',
+  fontWeight: 'bold'
+};
+
+const actionAreaStyle = {
+  marginTop: '40px',
+  width: '100%'
+};
+
+const activeButtonStyle = {
+  width: '100%', // ボタンを横いっぱいに
+  padding: '18px 40px',
+  fontSize: '1.2rem',
+  fontWeight: 'bold',
+  color: 'white',
+  background: '#1a73e8',
+  border: 'none',
+  borderRadius: '35px',
+  cursor: 'pointer',
+  boxShadow: '0 4px 12px rgba(26,115,232,0.3)',
+  transition: 'background 0.2s, transform 0.1s',
+  outline: 'none'
+};
+
+const waitingTextStyle = {
+  color: '#70757a',
   background: '#f8f9fa',
   padding: '15px',
-  borderRadius: '15px',
-  border: '1px solid #e8eaed',
-  maxWidth: '350px',
-  margin: '20px auto',
-  fontSize: '1rem',
-  color: '#5f6368'
+  borderRadius: '12px',
+  fontStyle: 'italic'
 };
-
-const progressBg = {
-  width: '100%',
-  height: '6px',
-  background: '#e8eaed',
-  borderRadius: '3px',
-  marginTop: '10px',
-  overflow: 'hidden'
-};
-
-const progressFill = (sec) => ({
-  width: `${(sec / 20) * 100}%`,
-  height: '100%',
-  background: '#1a73e8',
-  transition: 'width 1s linear'
-});

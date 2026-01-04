@@ -1,57 +1,64 @@
-import React from 'react';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'; // ★ 追加
-import { db } from '../firebase'; // ★ 追加（パスは環境に合わせて調整してください）
+import React, { useEffect } from 'react';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export default function ScoreScreen({ room, user }) {
   if (!room || !user) return null;
 
   const isHost = room.hostId === user.uid;
-  const members = Object.entries(room.members || {});
 
-  // 1. スコアの高い順にソート
-  const sortedMembers = members.sort((a, b) => b[1].score - a[1].score);
+  // ★ ポイント1: 表示用データの決定
+  // 既に固定された finalResults があればそれを使う。なければ現在の members をソートして使う。
+  const displayResults = room.finalResults
+    ? room.finalResults
+    : Object.entries(room.members || {})
+      .map(([uid, data]) => ({ uid, ...data }))
+      .sort((a, b) => b.score - a.score);
 
   const handleBackToLobby = async () => {
     try {
       const roomRef = doc(db, 'rooms', room.id);
       const currentMembers = { ...room.members };
-      
-      // 退出する自分のデータを削除
+
+      // 1. 自分を削除
       delete currentMembers[user.uid];
 
-      const remainingHumans = Object.values(currentMembers).filter(m => !m.isBot);
-      const hasHumanLeft = remainingHumans.length > 0;
+      // 2. 他に人間が残っているかチェック
+      const remainingHumans = Object.values(currentMembers);
 
-      if (hasHumanLeft) {
-        // --- 他の人間がいる場合：ホスト権限を移譲して自分だけ抜ける ---
-        const nextHostId = isHost ? remainingHumans[0].uid : room.hostId;
-
+      if (remainingHumans.length > 0) {
+        // --- 他に人間がいる場合：自分だけ抜ける ---
         await updateDoc(roomRef, {
           members: currentMembers,
-          activeCount: Object.keys(currentMembers).length,
-          hostId: nextHostId,
+          activeCount: remainingHumans.length,
+          hostId: isHost ? remainingHumans[0].uid : room.hostId, // ホスト移譲
           updatedAt: serverTimestamp()
         });
       } else {
-        // --- 誰もいなくなる場合：部屋を完全に初期化する ---
+        // --- 自分が最後の一人の場合：ルームを完全に初期化 ---
         await updateDoc(roomRef, {
           status: 'waiting',
           hostId: null,
           members: {},
           activeCount: 0,
           answeredUsers: [],
-          "quiz.currentIndex": 0,
           buzzer: null,
+          finalResults: null,
+          quiz: {
+            questions: [],
+            currentIndex: 0,
+            currentQuestion: null
+          },
           updatedAt: serverTimestamp()
         });
       }
 
-      // ★ 全ての更新が終わってから遷移
-      window.location.href = '/';
+      // ロビーへ戻る
+      window.location.href = '/lobby';
 
     } catch (e) {
       console.error("退出エラー:", e);
-      window.location.href = '/'; // エラー時も強制終了を防ぐため戻す
+      window.location.href = '/lobby';
     }
   };
 
@@ -63,13 +70,14 @@ export default function ScoreScreen({ room, user }) {
       </div>
 
       <div style={listContainerStyle}>
-        {sortedMembers.map(([uid, data], index) => {
-          const isMe = uid === user.uid;
+        {displayResults.map((data, index) => {
+          // displayResults は配列なので data.uid で判定
+          const isMe = data.uid === user.uid;
           const medals = ['🥇', '🥈', '🥉'];
 
           return (
             <div
-              key={uid}
+              key={data.uid}
               style={{
                 ...rankItemStyle,
                 backgroundColor: isMe ? '#e8f0fe' : 'white',
@@ -98,6 +106,7 @@ export default function ScoreScreen({ room, user }) {
         })}
       </div>
 
+      {/* おさらいセクション（変更なし） */}
       <div style={reviewSectionStyle}>
         <h3 style={reviewTitleStyle}>📖 今回の問題をおさらい</h3>
         <div style={reviewListStyle}>
@@ -189,8 +198,8 @@ const reviewCardStyle = {
 };
 
 const questionHeaderStyle = {
-  display: 'flex', 
-  justifyContent: 'space-between', 
+  display: 'flex',
+  justifyContent: 'space-between',
   marginBottom: '10px'
 };
 

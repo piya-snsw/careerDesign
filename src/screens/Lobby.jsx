@@ -10,17 +10,23 @@ export default function Lobby({ user }) {
   const navigate = useNavigate();
   const { roomId } = useParams();
 
-  // 1. リアルタイムに部屋一覧を取得
+// 1. リアルタイムに部屋一覧を取得
   useEffect(() => {
-    const ref = collection(db, 'rooms');
-    const unsub = onSnapshot(ref, snap => {
+    const roomsRef = collection(db, 'rooms');
+    
+    // onSnapshot の戻り値（関数）を unsubscribe という名前で保存
+    const unsubscribe = onSnapshot(roomsRef, (snap) => {
       const list = snap.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
       setRooms(list);
+    }, (error) => {
+      console.error("Lobby snapshot error:", error);
     });
-    return () => unsub();
+
+    // コンポーネントが消える時にこの関数を呼んで接続を切る
+    return () => unsubscribe();
   }, []);
 
   // 強制退去ガード（リセット検知）
@@ -39,7 +45,7 @@ export default function Lobby({ user }) {
 
     try {
       setJoining(id);
-      await joinRoom(id, user); 
+      await joinRoom(id, user);
       navigate(`/room/${id}`);
     } catch (error) {
       alert(error.message);
@@ -84,12 +90,14 @@ export default function Lobby({ user }) {
         <div style={gridStyle}>
           {['room1', 'room2', 'room3', 'room4', 'room5'].map(id => {
             const room = rooms.find(r => r.id === id);
+            
+            // ★安全なデータ取得（roomがない場合は空オブジェクトを想定）
             const members = room?.members || {};
-            // ★修正：playerCount は members の数か、activeCount の大きい方を採用すると安全
-            const playerCount = Math.max(Object.keys(members).length, room?.activeCount || 0);
-            // ★修正：ホスト判定をより厳格に（hostIdがない、または人数が0ならホスト不在とみなす）
-            const hasHost = !!room?.hostId && playerCount > 0;
-            const isFull = hasHost && playerCount >= 4;
+            const realMemberCount = Object.keys(members).length;
+            
+            // ★ホスト判定: メンバーが1人以上いて、かつ hostId が設定されている場合のみ
+            const hasHost = !!room?.hostId && realMemberCount > 0;
+            const isFull = realMemberCount >= 4;
             const isJoining = joining === id;
             const isMaintenance = room?.status === 'maintenance';
             const isPlaying = room?.status === 'playing' || room?.status === 'answer';
@@ -98,11 +106,24 @@ export default function Lobby({ user }) {
             let btnBg = '#1a73e8'; // Google Blue
             let isDisabled = isJoining || (hasHost && isFull) || isMaintenance;
 
-            if (isJoining) { label = '接続中...'; btnBg = '#bdc1c6'; }
-            else if (isMaintenance) { label = 'メンテナンス中'; btnBg = '#70757a'; }
-            else if (isPlaying) { label = '試合中'; btnBg = '#f9ab00'; }
-            else if (!hasHost) { label = '主催者として入る'; btnBg = '#34a853'; isDisabled = isJoining; }
-            else if (isFull) { label = '満員'; btnBg = '#dadce0'; }
+            if (isJoining) { 
+              label = '接続中...'; 
+              btnBg = '#bdc1c6'; 
+            } else if (isMaintenance) { 
+              label = 'メンテナンス中'; 
+              btnBg = '#70757a'; 
+            } else if (isPlaying) { 
+              label = '試合中'; 
+              btnBg = '#f9ab00'; 
+              isDisabled = true; 
+            } else if (!hasHost) { 
+              label = '主催者として入る'; 
+              btnBg = '#34a853'; 
+              isDisabled = isJoining; 
+            } else if (isFull) { 
+              label = '満員'; 
+              btnBg = '#dadce0'; 
+            }
 
             return (
               <div key={id} style={{ ...cardStyle, borderTop: `5px solid ${btnBg}` }}>
@@ -113,7 +134,7 @@ export default function Lobby({ user }) {
                       {isMaintenance ? 'Maintenance' : hasHost ? 'Active' : 'Waiting for Host'}
                     </div>
                     <div style={countStyle}>
-                      <span style={{ fontSize: '1.1rem' }}>👥</span> {playerCount} / 4 Players
+                      <span style={{ fontSize: '1.1rem' }}>👥</span> {realMemberCount} / 4 Players
                     </div>
                   </div>
 
@@ -141,7 +162,7 @@ export default function Lobby({ user }) {
 // --- ライトモード・スタイル定義 ---
 
 const pageBgStyle = {
-  backgroundColor: '#f8f9fa', // 薄いグレーの背景
+  backgroundColor: '#f8f9fa',
   minHeight: '100vh',
   color: '#202124',
   fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif'

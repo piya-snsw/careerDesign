@@ -48,29 +48,31 @@ export async function startQuiz(roomId) {
   });
 }
 
-export async function addBots(roomId, count) {
-  const ref = doc(db, 'rooms', roomId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return;
+export const addBots = async (roomId, count) => {
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnap = await getDoc(roomRef);
+  if (!roomSnap.exists()) return;
 
-  const data = snap.data();
-  const newMembers = { ...(data.members || {}) };
+  const room = roomSnap.data();
+  const members = { ...room.members };
 
-  // 既存のボット数をカウントして、番号が重ならないようにする工夫
-  const existingBotCount = Object.values(newMembers).filter(m => m.isBot).length;
-
+  const botNames = ['メタル', 'アイアン', 'チップ', 'データ'];
+  
   for (let i = 0; i < count; i++) {
-    const botId = `bot_${Math.random().toString(36).slice(2, 7)}`;
-    newMembers[botId] = { 
-      score: 0, 
+    const botId = `bot_${Math.random().toString(36).substr(2, 9)}`;
+    members[botId] = {
+      uid: botId,
+      name: botNames[i % botNames.length] + (members.length > 4 ? i : ''),
       isBot: true,
-      name: `Bot ${existingBotCount + i + 1}` // ★ 動物名は使わず "Bot X" 形式
+      score: 0
     };
   }
 
-  await updateDoc(ref, { members: newMembers });
-  console.log('✅ Bots added successfully');
-}
+  await updateDoc(roomRef, {
+    members: members,
+    activeCount: Object.keys(members).length
+  });
+};
 
 // ★ 追加: 次の問題へ進む、またはリザルトへ
 export async function nextQuestion(roomId, room) {
@@ -97,6 +99,33 @@ export async function nextQuestion(roomId, room) {
     });
   }
 }
+
+// quizService.js の一部 (ステータスを score に変える関数を想定)
+export const finishGame = async (roomId, currentMembers) => {
+  const roomRef = doc(db, 'rooms', roomId);
+  
+  // 1. 全員の順位を配列として確定させる（表示用）
+  const finalResults = Object.entries(currentMembers)
+    .map(([uid, data]) => ({ uid, ...data }))
+    .sort((a, b) => b.score - a.score);
+
+  // 2. メンバーからボットだけを削除した新しいオブジェクトを作成
+  const onlyHumans = {};
+  Object.entries(currentMembers).forEach(([uid, data]) => {
+    if (!data.isBot) {
+      onlyHumans[uid] = data;
+    }
+  });
+
+  // 3. 更新実行
+  await updateDoc(roomRef, {
+    status: 'score',
+    finalResults: finalResults, // ★ ボット込みの全記録をここに保存
+    members: onlyHumans,        // ★ 裏側のmembersからはボットを消去
+    activeCount: Object.keys(onlyHumans).length,
+    updatedAt: serverTimestamp()
+  });
+};
 
 export async function resetRoom(roomId) {
   const ref = doc(db, 'rooms', roomId);

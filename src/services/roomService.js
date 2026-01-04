@@ -2,7 +2,6 @@ import { doc, setDoc, updateDoc, deleteDoc, getDoc, serverTimestamp, deleteField
 import { db } from '../firebase';
 
 // --- 部屋に参加 ---
-// uid だけでなく user オブジェクトを受け取るように変更
 export async function joinRoom(roomId, user) {
   const { uid, displayName } = user;
   const ref = doc(db, 'rooms', roomId);
@@ -18,12 +17,14 @@ export async function joinRoom(roomId, user) {
       createdAt: serverTimestamp(),
       revivedAt: serverTimestamp(),
       members: {
-        [uid]: { 
-          score: 0, // pointsではなくscoreに統一
+        [uid]: {
+          score: 0,
           isBot: false,
-          name: name
+          name: name,
+          uid: uid
         }
       },
+      activeCount: 1,
       quiz: { questions: [], currentIndex: 0 },
       buzzer: { uid: null, limitAt: null },
       answeredUsers: []
@@ -36,62 +37,67 @@ export async function joinRoom(roomId, user) {
   if (room.status !== 'waiting') throw new Error('Game already started');
 
   await updateDoc(ref, {
-    [`members.${uid}`]: { 
-      score: 0, 
+    [`members.${uid}`]: {
+      score: 0,
       isBot: false,
-      name: name
-    }
+      name: name,
+      uid: uid
+    },
+    activeCount: memberCount + 1
   });
 }
 
-// --- 部屋から退出 (修正なし) ---
+// --- 部屋から退室 (最強版) ---
 export const leaveRoom = async (roomId, userId) => {
+  if (!roomId || !userId) return;
   const roomRef = doc(db, 'rooms', roomId);
   
   try {
+    // 1. まず自分を消す（これだけに集中する）
+    await updateDoc(roomRef, {
+      [`members.${userId}`]: deleteField(),
+      updatedAt: serverTimestamp()
+    });
+    
+    // 2. 確実に反映させるために最新の状態を取得
     const snap = await getDoc(roomRef);
     if (!snap.exists()) return;
+    const data = snap.data();
+    
+    // 3. 自分を除いた残りの人間を判定
+    const members = data.members || {};
+    const humanMembers = Object.entries(members).filter(([uid, m]) => !m.isBot && uid !== userId);
 
-    const roomData = snap.data();
-    const members = { ...(roomData.members || {}) };
-
-    // 1. 自分をメンバーから削除
-    delete members[userId];
-
-    // 2. 「人間」が残っているか確認
-    const remainingHumans = Object.values(members).filter(m => !m.isBot);
-
-    if (remainingHumans.length === 0) {
-      // 人間が一人もいなくなった場合
-      console.log("人間がいなくなったため、ルームを完全リセットします。");
+    if (humanMembers.length === 0) {
+      // 人間が一人もいなくなったら完全初期化
       await updateDoc(roomRef, {
-        members: {},        // ボットも削除
-        activeCount: 0,     // ★ここを追加：カウントを0にする
-        hostId: null,       // ★ここを追加：ホストを不在にする
+        members: {},
+        activeCount: 0,
+        hostId: null,
         status: 'waiting',
-        "quiz.currentIndex": 0,
-        answeredUsers: [],
-        buzzer: null,
-        updatedAt: serverTimestamp()
+        quiz: { questions: [], currentIndex: 0 },
+        buzzer: { uid: null, limitAt: null },
+        answeredUsers: []
+      });
+    } else if (data.hostId === userId) {
+      // 自分がホストだった場合は移譲
+      await updateDoc(roomRef, {
+        hostId: humanMembers[0][0],
+        activeCount: humanMembers.length
       });
     } else {
-      // まだ人間が残っている場合
-      const isHost = roomData.hostId === userId;
-      const nextHostId = isHost ? remainingHumans[0].uid : roomData.hostId;
-
+      // それ以外は人数だけ更新
       await updateDoc(roomRef, {
-        members: members,
-        activeCount: remainingHumans.length, // ★ここを追加：残った人間の数を反映
-        hostId: nextHostId,
-        updatedAt: serverTimestamp()
+        activeCount: humanMembers.length
       });
     }
   } catch (error) {
-    console.error("退出処理に失敗:", error);
+    console.error("Leave error:", error);
+    throw error; // App.jsx 側でキャッチさせるために throw する
   }
 };
 
-// --- 早押しボタン (修正なし) ---
+// --- 早押しボタン ---
 export async function pressButton(roomId, uid) {
   const ref = doc(db, 'rooms', roomId);
   const snap = await getDoc(ref);
@@ -110,8 +116,7 @@ export async function pressButton(roomId, uid) {
   });
 }
 
-// --- 回答送信 (修正なし) ---
-// --- 回答送信 (スコア加算のロジック) ---
+// --- 回答送信 ---
 export async function submitAnswer(roomId, uid, answerText, isCorrectManual = null) {
   const ref = doc(db, 'rooms', roomId);
   const snap = await getDoc(ref);
@@ -122,7 +127,6 @@ export async function submitAnswer(roomId, uid, answerText, isCorrectManual = nu
   const correct = isCorrectManual !== null ? isCorrectManual : (answerText === currentQ.answer);
 
   if (correct) {
-    // 正解：スコアを +10 し、回答画面へ
     await updateDoc(ref, {
       'status': 'answer',
       'buzzer.uid': null,
@@ -132,14 +136,12 @@ export async function submitAnswer(roomId, uid, answerText, isCorrectManual = nu
         text: answerText,
         isCorrect: true
       },
-      // 1ではなく10ポイント加算にするとランキングが動きやすくて楽しいです
-      [`members.${uid}.score`]: increment(10) 
+      [`members.${uid}.score`]: increment(10)
     });
   } else {
-    // 不正解：回答権を失わせ、他の人が押せるように戻す（または全員終了なら回答画面へ）
     const newAnsweredUsers = [...(room.answeredUsers || []), uid];
     const totalMembers = Object.keys(room.members || {}).length;
-    
+
     if (newAnsweredUsers.length >= totalMembers) {
       await updateDoc(ref, {
         'status': 'answer',
@@ -150,7 +152,7 @@ export async function submitAnswer(roomId, uid, answerText, isCorrectManual = nu
       });
     } else {
       await updateDoc(ref, {
-        'status': 'playing', 
+        'status': 'playing',
         'buzzer.uid': null,
         'buzzer.limitAt': null,
         'answeredUsers': newAnsweredUsers,
