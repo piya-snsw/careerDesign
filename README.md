@@ -50,8 +50,6 @@ npm run dev
 
 Bash
 
-# ビルドとデプロイを同時に実行
-npm run build && firebase deploy
 📖 クイズデータ構造
 問題データは以下の形式で管理されています。
 
