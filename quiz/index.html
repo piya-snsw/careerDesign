@@ -223,6 +223,18 @@
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
         }
 
+        .mode-btn.solo:hover:not(:disabled) {
+            background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+            color: white;
+            border: none;
+        }
+
+        .mode-btn.multi:hover:not(:disabled) {
+            background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+            color: white;
+            border: none;
+        }
+
         .settings-area {
             margin: 2rem 0;
             padding: 1.5rem;
@@ -1329,14 +1341,19 @@
             useEffect(() => {
                 if (!socket) return;
 
+                // Capture socket instance for cleanup
+                const currentSocket = socket;
+
                 const handleTimerUpdate = (data) => {
                     setTimeLeft(data.timeLeft);
                 };
 
-                socket.on('lobbyTimerUpdate', handleTimerUpdate);
+                currentSocket.on('lobbyTimerUpdate', handleTimerUpdate);
 
                 return () => {
-                    socket.off('lobbyTimerUpdate', handleTimerUpdate);
+                    if (currentSocket) {
+                        currentSocket.off('lobbyTimerUpdate', handleTimerUpdate);
+                    }
                 };
             }, []);
 
@@ -1351,7 +1368,9 @@
                     );
                 }
 
-                const isYou = player.name === playerName && !player.isCPU;
+                // Use socket.id to identify the current user reliably
+                const currentSocketId = socket ? socket.id : null;
+                const isYou = player.id === currentSocketId;
                 const slotClass = `player-slot filled ${player.isCPU ? 'cpu' : ''} ${isYou ? 'you' : ''}`;
 
                 return (
@@ -1586,7 +1605,7 @@
         }
 
         function MultiQuiz({ questions, players: initialPlayers, playerName, onHome }) {
-            const [currentIndex, setCurrentIndex] = useState(0);
+            const [currentIndex, setCurrentIndex] = useState(-1);
             const [players, setPlayers] = useState(initialPlayers);
             const [timeLeft, setTimeLeft] = useState(30);
             const [displayedText, setDisplayedText] = useState('');
@@ -1611,15 +1630,34 @@
             const typeIntervalRef = useRef(null);
             const textIndexRef = useRef(0);
 
-            // タイプライター効果
+            // 問題変更時のリセット
+            useEffect(() => {
+                if (currentQuestion) {
+                    textIndexRef.current = 0;
+                    setDisplayedText('');
+                }
+            }, [currentIndex]);
+
+            // タイプライター効果（再生・一時停止制御）
             useEffect(() => {
                 if (!currentQuestion) return;
 
-                const text = currentQuestion.text;
-                textIndexRef.current = 0;
-                setDisplayedText('');
-                setIsTyping(true);
+                // バズイン中または一時停止中はタイマーを止める（カーソルも消す）
+                if (currentAnswerer || isPaused) {
+                    setIsTyping(false);
+                    return;
+                }
 
+                const text = currentQuestion.text;
+
+                // 既に全文表示済みの場合は何もしない
+                if (textIndexRef.current >= text.length) {
+                    setIsTyping(false);
+                    return;
+                }
+
+                // タイマー開始
+                setIsTyping(true);
                 typeIntervalRef.current = setInterval(() => {
                     if (textIndexRef.current < text.length) {
                         textIndexRef.current++;
@@ -1628,22 +1666,16 @@
                         setIsTyping(false);
                         clearInterval(typeIntervalRef.current);
                     }
-                }, 50); // 50msごとに1文字
+                }, 50);
 
                 return () => clearInterval(typeIntervalRef.current);
-            }, [currentIndex, currentQuestion]);
-
-            // 誰かがバズインしたらタイプライターを停止して全文表示
-            useEffect(() => {
-                if (currentAnswerer && isTyping && currentQuestion) {
-                    clearInterval(typeIntervalRef.current);
-                    setDisplayedText(currentQuestion.text);
-                    setIsTyping(false);
-                }
-            }, [currentAnswerer]);
+            }, [currentIndex, currentAnswerer, isPaused]);
 
             useEffect(() => {
                 if (!socket) return;
+
+                // Capture socket instance for cleanup
+                const currentSocket = socket;
 
                 const handleTimerUpdate = (data) => {
                     setTimeLeft(data.timeLeft);
@@ -1746,26 +1778,32 @@
                     setIsPaused(false);
                 };
 
-                socket.on('questionTimerUpdate', handleTimerUpdate);
-                socket.on('answerTimerUpdate', handleAnswerTimerUpdate);
-                socket.on('playerBuzzedIn', handlePlayerBuzzedIn);
-                socket.on('answerResult', handleAnswerResult);
-                socket.on('answerTimeout', handleAnswerTimeout);
-                socket.on('resumeQuestion', handleResumeQuestion);
-                socket.on('allPlayersLost', handleAllPlayersLost);
-                socket.on('timeUp', handleTimeUp);
-                socket.on('nextQuestion', handleNextQuestion);
+                currentSocket.on('questionTimerUpdate', handleTimerUpdate);
+                currentSocket.on('answerTimerUpdate', handleAnswerTimerUpdate);
+                currentSocket.on('playerBuzzedIn', handlePlayerBuzzedIn);
+                currentSocket.on('answerResult', handleAnswerResult);
+                currentSocket.on('answerTimeout', handleAnswerTimeout);
+                currentSocket.on('resumeQuestion', handleResumeQuestion);
+                currentSocket.on('allPlayersLost', handleAllPlayersLost);
+                currentSocket.on('timeUp', handleTimeUp);
+                currentSocket.on('timeUp', handleTimeUp);
+                currentSocket.on('nextQuestion', handleNextQuestion);
+
+                // リスナー設定完了後に準備完了を通知
+                currentSocket.emit('clientReady');
 
                 return () => {
-                    socket.off('questionTimerUpdate', handleTimerUpdate);
-                    socket.off('answerTimerUpdate', handleAnswerTimerUpdate);
-                    socket.off('playerBuzzedIn', handlePlayerBuzzedIn);
-                    socket.off('answerResult', handleAnswerResult);
-                    socket.off('answerTimeout', handleAnswerTimeout);
-                    socket.off('resumeQuestion', handleResumeQuestion);
-                    socket.off('allPlayersLost', handleAllPlayersLost);
-                    socket.off('timeUp', handleTimeUp);
-                    socket.off('nextQuestion', handleNextQuestion);
+                    if (currentSocket) {
+                        currentSocket.off('questionTimerUpdate', handleTimerUpdate);
+                        currentSocket.off('answerTimerUpdate', handleAnswerTimerUpdate);
+                        currentSocket.off('playerBuzzedIn', handlePlayerBuzzedIn);
+                        currentSocket.off('answerResult', handleAnswerResult);
+                        currentSocket.off('answerTimeout', handleAnswerTimeout);
+                        currentSocket.off('resumeQuestion', handleResumeQuestion);
+                        currentSocket.off('allPlayersLost', handleAllPlayersLost);
+                        currentSocket.off('timeUp', handleTimeUp);
+                        currentSocket.off('nextQuestion', handleNextQuestion);
+                    }
                 };
             }, [myId]);
 
@@ -1780,10 +1818,10 @@
                 socket.emit('submitAnswer', { answerIndex: idx });
             };
 
-            if (!currentQuestion) {
+            if (currentIndex === -1 || !currentQuestion) {
                 return (
                     <div className="card">
-                        <p className="connecting">ゲームを読み込み中...</p>
+                        <p className="connecting">ゲームを開始しています...</p>
                     </div>
                 );
             }
@@ -2020,7 +2058,8 @@
 
                     <div className="ranking-list">
                         {rankings.map((player, index) => {
-                            const isYou = player.id === myId || player.name === playerName;
+                            // Use socket.id to identify the user correctly
+                            const isYou = player.id === myId;
                             let className = `ranking-item rank-${player.rank}`;
                             if (isYou) className += ' you';
 

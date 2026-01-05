@@ -30,6 +30,7 @@ class Player {
         this.score = 0;
         this.correctCount = 0;
         this.hasLostRight = false; // この問題で回答権を失ったか
+        this.isReady = false; // 次の問題への準備ができているか
     }
 }
 
@@ -92,6 +93,7 @@ class GameRoom {
         this.answerTimeLeft = 5;
         this.currentAnswerer = null;
         this.isPaused = false;
+        this.players.forEach(p => p.isReady = false);
     }
 
     getCurrentQuestion() {
@@ -101,6 +103,11 @@ class GameRoom {
     // 回答権を持っているプレイヤーがいるか
     hasAvailableAnswerers() {
         return this.players.some(p => !p.hasLostRight);
+    }
+
+    // 全員の準備ができているか（CPUは常にReady）
+    allPlayersReady() {
+        return this.players.every(p => p.isCPU || p.isReady || p.isDisconnected);
     }
 }
 
@@ -325,30 +332,53 @@ io.on('connection', (socket) => {
             questions: currentRoom.questions
         });
 
-        // 最初の問題を開始
-        io.to(currentRoom.id).emit('nextQuestion', {
-            questionIndex: 0,
-            question: currentRoom.questions[0],
-            players: currentRoom.players.map(p => ({
-                id: p.id,
-                name: p.name,
-                score: p.score,
-                isCPU: p.isCPU,
-                hasLostRight: p.hasLostRight,
-                isDisconnected: p.isDisconnected
-            }))
-        });
+        // 注: ここではまだ nextQuestion を送らない。
+        // クライアントからの clientReady を待ってから開始する。
+    });
 
-        // 文字表示アニメーションの時間（文字数 * 60ms、最小3秒、最大7秒）
-        const questionText = currentRoom.questions[0].text;
-        const delay = Math.max(3000, Math.min(7000, questionText.length * 60));
+    // クライアントからの準備完了通知
+    socket.on('clientReady', () => {
+        if (!currentRoom || currentRoom.state !== 'playing') return;
+        const player = currentRoom.players.find(p => p.id === socket.id);
+        if (player) {
+            player.isReady = true;
 
-        // 少し待ってからタイマー開始
-        setTimeout(() => {
-            startQuestionTimer(currentRoom);
-        }, delay);
+            // 全員準備OKかチェック
+            if (currentRoom.allPlayersReady()) {
+                // 最初の問題を開始（まだ始まっていない場合）
+                if (currentRoom.currentQuestionIndex === 0 && !currentRoom.questionTimer) {
+                    startNextQuestionSequence(currentRoom);
+                }
+            }
+        }
     });
 });
+
+// 次の問題を開始するシーケンス
+function startNextQuestionSequence(room) {
+    io.to(room.id).emit('nextQuestion', {
+        questionIndex: room.currentQuestionIndex,
+        question: room.questions[room.currentQuestionIndex],
+        players: room.players.map(p => ({
+            id: p.id,
+            name: p.name,
+            score: p.score,
+            isCPU: p.isCPU,
+            hasLostRight: p.hasLostRight,
+            isDisconnected: p.isDisconnected
+        }))
+    });
+
+    // 文字表示アニメーションの時間（文字数 * 60ms、最小3秒、最大7秒）
+    const questionText = room.questions[room.currentQuestionIndex].text;
+    const delay = Math.max(3000, Math.min(7000, questionText.length * 60));
+
+    // 少し待ってからタイマー開始
+    setTimeout(() => {
+        startQuestionTimer(room);
+    }, delay);
+}
+
 
 // ロビータイマー開始
 function startLobbyTimer(room) {
@@ -564,26 +594,13 @@ function moveToNextQuestion(room) {
         // 次の問題
         room.resetForNextQuestion();
 
-        io.to(room.id).emit('nextQuestion', {
-            questionIndex: room.currentQuestionIndex,
-            question: room.questions[room.currentQuestionIndex],
-            players: room.players.map(p => ({
-                id: p.id,
-                name: p.name,
-                score: p.score,
-                isCPU: p.isCPU,
-                hasLostRight: p.hasLostRight,
-                isDisconnected: p.isDisconnected
-            }))
-        });
+        // 次の問題
+        room.resetForNextQuestion();
 
-        // 文字表示アニメーションの時間
-        const questionText = room.questions[room.currentQuestionIndex].text;
-        const delay = Math.max(3000, Math.min(7000, questionText.length * 60));
+        // 次の問題へは即座に移行（ここは同期ズレが起きにくい＆ウェイトが長くなるとテンポ悪いので）
+        // もし問題あればここもReady待ちにするが、一旦このままで。
+        startNextQuestionSequence(room);
 
-        setTimeout(() => {
-            startQuestionTimer(room);
-        }, delay);
     }
 }
 
