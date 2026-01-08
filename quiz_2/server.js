@@ -204,6 +204,7 @@ io.on('connection', (socket) => {
 
         if (isCorrect) {
             // 正解！
+            const timeBonus = Math.floor((currentRoom.questionTimeLeft / 30) * 500);
             const points = 1000 + timeBonus;
             currentPlayer.score += points;
             currentPlayer.correctCount++;
