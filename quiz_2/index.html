@@ -1002,7 +1002,7 @@
             color: white;
             border: none;
         }
-        
+
         .mode-btn.Google:hover:not(:disabled) {
             background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
             color: white;
@@ -1832,7 +1832,7 @@
                         setResultMessage({
                             type: 'correct',
                             text: `🎉 ${data.playerName} が正解！`,
-                            score: data.score
+                            points: data.points
                         });
                         setCorrectAnswer(data.correctAnswer);
                     } else {
@@ -2010,7 +2010,7 @@
                         {resultMessage && (
                             <div className={`result-message ${resultMessage.type}`}>
                                 {resultMessage.text}
-                                {resultMessage.score && <div>+{resultMessage.score} pts!</div>}
+                                {resultMessage.points && <div>+{resultMessage.points} pts!</div>}
                             </div>
                         )}
 

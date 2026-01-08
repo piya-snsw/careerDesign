@@ -204,8 +204,8 @@ io.on('connection', (socket) => {
 
         if (isCorrect) {
             // 正解！
-            const timeBonus = Math.floor((currentRoom.questionTimeLeft / 30) * 500);
-            currentPlayer.score += 1000 + timeBonus;
+            const points = 1000 + timeBonus;
+            currentPlayer.score += points;
             currentPlayer.correctCount++;
 
             io.to(currentRoom.id).emit('answerResult', {
@@ -213,7 +213,8 @@ io.on('connection', (socket) => {
                 playerName: currentPlayer.name,
                 isCorrect: true,
                 correctAnswer: question.answer,
-                score: currentPlayer.score
+                score: currentPlayer.score,
+                points: points
             });
 
             // 次の問題へ
@@ -382,6 +383,7 @@ function startNextQuestionSequence(room) {
 
 // ロビータイマー開始
 function startLobbyTimer(room) {
+    if (room.lobbyTimer) clearInterval(room.lobbyTimer);
     room.lobbyTimer = setInterval(() => {
         room.lobbyTimeLeft--;
 
@@ -411,6 +413,7 @@ function startGame(room) {
 
 // 問題タイマー開始
 function startQuestionTimer(room) {
+    if (room.questionTimer) clearInterval(room.questionTimer);
     room.questionTimer = setInterval(() => {
         if (room.isPaused) return;
 
@@ -451,7 +454,8 @@ function startQuestionTimer(room) {
 
                         if (isCorrect) {
                             const timeBonus = Math.floor((room.questionTimeLeft / 30) * 500);
-                            player.score += 1000 + timeBonus;
+                            const points = 1000 + timeBonus;
+                            player.score += points;
                             player.correctCount++;
 
                             io.to(room.id).emit('answerResult', {
@@ -459,7 +463,8 @@ function startQuestionTimer(room) {
                                 playerName: player.name,
                                 isCorrect: true,
                                 correctAnswer: question.answer,
-                                score: player.score
+                                score: player.score,
+                                points: points
                             });
 
                             setTimeout(() => {
@@ -518,6 +523,7 @@ function startQuestionTimer(room) {
 
 // 回答タイマー開始（5秒）
 function startAnswerTimer(room) {
+    if (room.answerTimer) clearInterval(room.answerTimer);
     room.answerTimer = setInterval(() => {
         room.answerTimeLeft--;
 
