@@ -1,0 +1,2231 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FE Exam Speed Quiz - 基本情報技術者試験</title>
+    <!-- Firebase SDK（★ここに追加） -->
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-auth-compat.js"></script>
+    <!-- Load React and Babel via CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Socket.io Client -->
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- Quiz Data -->
+    <script src="questions_technology.js"></script>
+    <script src="questions_management.js"></script>
+    <script src="questions_strategy.js"></script>
+    <script>
+        // Aggregate all questions from category files
+        const QUESTIONS = [
+            ...TECH_QUESTIONS,
+            ...MGMT_QUESTIONS,
+            ...STRAT_QUESTIONS
+        ];
+    </script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+JP:wght@400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0284c7;
+            /* Sky Blue */
+            --primary-light: #38bdf8;
+            --secondary: #0d9488;
+            /* Teal */
+            --bg: #f0f9ff;
+            --card-bg: #ffffff;
+            --glass: rgba(255, 255, 255, 0.7);
+            --glass-border: rgba(2, 132, 199, 0.1);
+            --text: #0f172a;
+            --text-dim: #475569;
+            --success: #10b981;
+            --error: #f43f5e;
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(at 0% 0%, hsla(199, 89%, 95%, 1) 0, transparent 50%),
+                radial-gradient(at 100% 100%, hsla(187, 89%, 95%, 1) 0, transparent 50%);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow-x: hidden;
+        }
+
+        #root {
+            width: 100%;
+            max-width: 800px;
+            padding: 1.5rem;
+            z-index: 1;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow: 0 10px 15px -3px rgba(2, 132, 199, 0.05), 0 4px 6px -2px rgba(2, 132, 199, 0.02);
+            animation: fadeIn 0.5s ease-out;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.25rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            color: var(--primary);
+            letter-spacing: -0.02em;
+        }
+
+        .category-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn {
+            background: white;
+            border: 1px solid #e2e8f0;
+            color: var(--text);
+            padding: 1rem 1.25rem;
+            border-radius: 14px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .btn:hover:not(:disabled) {
+            border-color: var(--primary-light);
+            background: #f0f9ff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.1);
+        }
+
+        .btn.primary {
+            background: var(--primary);
+            color: white;
+            border: 1px solid var(--primary);
+        }
+
+        .btn.primary:hover:not(:disabled) {
+            background: var(--primary-light);
+            box-shadow: 0 6px 15px rgba(2, 132, 199, 0.2);
+        }
+
+        .btn.outline {
+            background: transparent;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+        }
+
+        .btn.outline:hover:not(:disabled) {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn:disabled {
+            background: #e2e8f0;
+            color: #94a3b8;
+            cursor: not-allowed;
+            border-color: #e2e8f0;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        /* Mode Selection Styles */
+        .mode-selection {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .mode-btn {
+            padding: 2rem 1.5rem;
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            min-height: 180px;
+        }
+
+        .mode-btn .mode-icon {
+            font-size: 3rem;
+        }
+
+        .mode-btn .mode-title {
+            font-size: 1.2rem;
+            font-weight: 800;
+        }
+
+        .mode-btn .mode-desc {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        .mode-btn.solo {
+            background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+            color: white;
+            border: none;
+        }
+
+        .mode-btn.solo .mode-desc {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .mode-btn.multi {
+            background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+            color: white;
+            border: none;
+        }
+
+        .mode-btn.multi .mode-desc {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .mode-btn:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .mode-btn.solo:hover:not(:disabled) {
+            background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+            color: white;
+            border: none;
+        }
+
+        .mode-btn.multi:hover:not(:disabled) {
+            background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+            color: white;
+            border: none;
+        }
+
+        .settings-area {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: #f8fafc;
+            border-radius: 16px;
+            text-align: left;
+        }
+
+        .settings-area label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--text-dim);
+        }
+
+        .settings-input-group {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .settings-input-group input[type="range"] {
+            flex: 1;
+            accent-color: var(--primary);
+        }
+
+        .count-display {
+            font-weight: 800;
+            font-size: 1.1rem;
+            color: var(--primary);
+            min-width: 3rem;
+            text-align: right;
+        }
+
+        /* Toggle Switch Styles */
+        .switch-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 1rem;
+            padding: 0.75rem 0;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .switch-label {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-dim);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--primary);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(24px);
+        }
+
+        /* Countdown Styles */
+        .countdown-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .countdown-number {
+            font-size: 10rem;
+            font-weight: 800;
+            color: var(--primary);
+            animation: zoomInOut 1s ease-in-out infinite;
+        }
+
+        @keyframes zoomInOut {
+            0% {
+                transform: scale(0.5);
+                opacity: 0;
+            }
+
+            50% {
+                transform: scale(1.2);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 0;
+            }
+        }
+
+        .timer-container {
+            width: 100%;
+            height: 8px;
+            background: #e0f2fe;
+            border-radius: 4px;
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+
+        .timer-bar {
+            height: 100%;
+            background: linear-gradient(to right, #f87171, #facc15, #4ade80);
+            transition: width 0.1s linear;
+        }
+
+        .question-text {
+            font-size: 1.2rem;
+            text-align: left;
+            margin-bottom: 2rem;
+            line-height: 1.7;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .choice-btn {
+            display: block;
+            width: 100%;
+            text-align: left;
+            margin-bottom: 0.8rem;
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            padding: 1.1rem 1.5rem;
+            border-radius: 16px;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: 'Noto Sans JP', sans-serif;
+            font-size: 1rem;
+        }
+
+        .choice-btn:hover:not(:disabled) {
+            background: white;
+            border-color: var(--primary);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .choice-btn.correct {
+            background: #ecfdf5 !important;
+            border-color: var(--success) !important;
+            color: #065f46 !important;
+        }
+
+        .choice-btn.wrong {
+            background: #fff1f2 !important;
+            border-color: var(--error) !important;
+            color: #9f1239 !important;
+            animation: shake 0.4s ease-in-out;
+        }
+
+        @keyframes shake {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(-4px);
+            }
+
+            75% {
+                transform: translateX(4px);
+            }
+        }
+
+        .score-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+            font-weight: 700;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+
+        .streak-badge {
+            padding: 0.25rem 0.8rem;
+            background: var(--secondary);
+            border-radius: 20px;
+            color: white;
+            font-size: 0.75rem;
+            animation: bounce 0.5s ease;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.15);
+            }
+        }
+
+        .result-score {
+            font-size: 4.5rem;
+            font-weight: 800;
+            margin: 1rem 0;
+            color: var(--primary);
+        }
+
+        .category-label {
+            position: absolute;
+            top: 1.5rem;
+            left: 2rem;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .explanation-box {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f0f9ff;
+            border-left: 4px solid var(--primary);
+            font-size: 0.9rem;
+            text-align: left;
+            color: var(--text-dim);
+            line-height: 1.6;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .review-item {
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #f1f5f9;
+            text-align: left;
+        }
+
+        .review-q {
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .action-group {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 3rem;
+        }
+
+        .action-group .btn {
+            flex: 1;
+        }
+
+        /* Lobby Styles */
+        .lobby-container {
+            text-align: center;
+        }
+
+        .lobby-timer {
+            font-size: 4rem;
+            font-weight: 800;
+            color: var(--secondary);
+            margin: 1rem 0;
+        }
+
+        .lobby-players {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .player-slot {
+            padding: 1.5rem;
+            border-radius: 16px;
+            background: #f8fafc;
+            border: 2px dashed #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            min-height: 120px;
+            justify-content: center;
+        }
+
+        .player-slot.filled {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border: 2px solid var(--primary-light);
+        }
+
+        .player-slot.cpu {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid var(--warning);
+        }
+
+        .player-slot.you {
+            background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+            border: 2px solid var(--primary);
+        }
+
+        .player-slot.you * {
+            color: white !important;
+        }
+
+        .player-avatar {
+            font-size: 2rem;
+        }
+
+        .player-name {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--text);
+        }
+
+        .player-tag {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.1);
+            color: var(--text-dim);
+        }
+
+        .waiting-text {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+        }
+
+        /* Multi Quiz Styles */
+        .players-bar {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: #f8fafc;
+            border-radius: 12px;
+        }
+
+        .player-score-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .player-score-item .name {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+
+        .player-score-item .score {
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--primary);
+        }
+
+        .player-score-item.you {
+            position: relative;
+        }
+
+        .player-score-item.you::after {
+            content: "YOU";
+            position: absolute;
+            top: -12px;
+            font-size: 0.6rem;
+            background: var(--primary);
+            color: white;
+            padding: 1px 6px;
+            border-radius: 4px;
+        }
+
+        .player-score-item.answered .name::after {
+            content: " ✓";
+            color: var(--success);
+        }
+
+        .player-score-item.correct {
+            animation: correctPulse 0.5s ease;
+        }
+
+        @keyframes correctPulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.2);
+                background: #ecfdf5;
+                border-radius: 8px;
+            }
+        }
+
+        /* Multi Result Styles */
+        .ranking-list {
+            margin: 2rem 0;
+        }
+
+        .ranking-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.5rem;
+            margin-bottom: 0.75rem;
+            background: #f8fafc;
+            border-radius: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .ranking-item.rank-1 {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid #f59e0b;
+            transform: scale(1.05);
+        }
+
+        .ranking-item.rank-2 {
+            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+            border: 2px solid #94a3b8;
+        }
+
+        .ranking-item.rank-3 {
+            background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%);
+            border: 2px solid #f97316;
+        }
+
+        .ranking-item.you {
+            box-shadow: 0 0 0 3px var(--primary);
+        }
+
+        .rank-number {
+            font-size: 1.5rem;
+            font-weight: 800;
+            width: 40px;
+            text-align: center;
+        }
+
+        .rank-1 .rank-number {
+            color: #f59e0b;
+        }
+
+        .rank-2 .rank-number {
+            color: #64748b;
+        }
+
+        .rank-3 .rank-number {
+            color: #f97316;
+        }
+
+        .ranking-player-info {
+            flex: 1;
+            text-align: left;
+        }
+
+        .ranking-player-name {
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .ranking-player-stats {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        .ranking-score {
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: var(--primary);
+        }
+
+        @media (max-width: 600px) {
+            .card {
+                padding: 1.5rem;
+            }
+
+            h1 {
+                font-size: 1.75rem;
+            }
+
+            .action-group {
+                flex-direction: column;
+            }
+
+            .mode-selection {
+                grid-template-columns: 1fr;
+            }
+
+            .lobby-players {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .link-text {
+            color: var(--primary);
+            cursor: pointer;
+            text-decoration: underline;
+            transition: opacity 0.2s;
+        }
+
+        .link-text:hover {
+            opacity: 0.7;
+        }
+
+        /* Player name input */
+        .name-input {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            margin: 1rem 0;
+            text-align: center;
+            font-family: inherit;
+        }
+
+        .name-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .connecting {
+            animation: pulse 1.5s infinite;
+        }
+
+        /* Buzzer Quiz Styles */
+        .buzz-button {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #ef4444, #dc2626);
+            border: 8px solid #b91c1c;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(220, 38, 38, 0.4), inset 0 -5px 20px rgba(0, 0, 0, 0.2);
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 2rem auto;
+        }
+
+        .buzz-button:hover:not(:disabled) {
+            transform: scale(1.05);
+            box-shadow: 0 15px 40px rgba(220, 38, 38, 0.5), inset 0 -5px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .buzz-button:active:not(:disabled) {
+            transform: scale(0.95);
+            box-shadow: 0 5px 15px rgba(220, 38, 38, 0.3), inset 0 5px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .buzz-button:disabled {
+            background: linear-gradient(145deg, #94a3b8, #64748b);
+            border-color: #475569;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .answering-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .answering-text {
+            color: white;
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+        }
+
+        .answering-timer {
+            font-size: 5rem;
+            font-weight: 800;
+            color: #fbbf24;
+            text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
+        }
+
+        .typewriter-text {
+            font-size: 1.2rem;
+            text-align: left;
+            margin-bottom: 2rem;
+            line-height: 1.7;
+            font-weight: 700;
+            color: var(--text);
+            min-height: 100px;
+        }
+
+        .typewriter-cursor {
+            display: inline-block;
+            width: 3px;
+            height: 1.2em;
+            background: var(--primary);
+            animation: blink 0.7s infinite;
+            vertical-align: text-bottom;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+
+            0%,
+            50% {
+                opacity: 1;
+            }
+
+            51%,
+            100% {
+                opacity: 0;
+            }
+        }
+
+        .player-status-bar {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: #f8fafc;
+            border-radius: 12px;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .player-status-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.5rem;
+            border-radius: 8px;
+            min-width: 80px;
+        }
+
+        .player-status-item.lost {
+            opacity: 0.4;
+            text-decoration: line-through;
+        }
+
+        .player-status-item.answering {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            animation: pulse 1s infinite;
+        }
+
+        .player-status-item.you {
+            border: 2px solid var(--primary);
+        }
+
+        .answer-timer-bar {
+            width: 100%;
+            height: 12px;
+            background: #e2e8f0;
+            border-radius: 6px;
+            margin: 1rem 0;
+            overflow: hidden;
+        }
+
+        .answer-timer-fill {
+            height: 100%;
+            background: linear-gradient(to right, #ef4444, #f59e0b);
+            transition: width 0.1s linear;
+        }
+
+        .choices-container {
+            animation: fadeIn 0.3s ease;
+        }
+
+        .result-message {
+            text-align: center;
+            padding: 1.5rem;
+            border-radius: 16px;
+            margin: 1rem 0;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .result-message.correct {
+            background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+            color: #065f46;
+            border: 2px solid var(--success);
+        }
+
+        .result-message.wrong {
+            background: linear-gradient(135deg, #fff1f2, #ffe4e6);
+            color: #9f1239;
+            border: 2px solid var(--error);
+        }
+
+        .result-message.timeout {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            color: #92400e;
+            border: 2px solid var(--warning);
+        }
+
+        .mode-btn.Google {
+            background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+            color: white;
+            border: none;
+        }
+
+        .mode-btn.Anonymous {
+            background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+            color: white;
+            border: none;
+        }
+
+        .mode-btn.Google:hover:not(:disabled) {
+            background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+            color: white;
+            border: none;
+        }
+
+        .mode-btn.Anonymous:hover:not(:disabled) {
+            background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+            color: white;
+            border: none;
+        }
+
+        .logout-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const CATEGORIES = ["テクノロジ", "マネジメント", "ストラテジ"];
+
+        // Socket.io connection
+        let socket = null;
+
+        // Firebase 初期化 & 認証
+        const firebaseConfig = {
+            apiKey: "AIzaSyDf08T7zK8F6mVhYF3P9Q4pXl71ToWyEI0",
+            authDomain: "quiz-buster-6f456.firebaseapp.com",
+            projectId: "quiz-buster-6f456",
+            storageBucket: "quiz-buster-6f456.firebasestorage.app",
+            messagingSenderId: "1026025613924",
+            appId: "1:1026025613924:web:ef0f96108db42c0891cd71",
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+
+        // Login コンポーネント
+        function Login({ onLogin, setMode }) {
+            const handleGoogle = async () => {
+                try {
+                    const provider = new firebase.auth.GoogleAuthProvider();
+                    provider.setCustomParameters({ prompt: 'select_account' });
+                    const result = await auth.signInWithPopup(provider);
+                    onLogin(result.user);
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+
+            const handleAnonymous = async () => {
+                try {
+                    const result = await auth.signInAnonymously();
+                    onLogin(result.user);
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+
+            return (
+                <div className="card" style={{ textAlign: 'center' }}>
+                    <h1>ログイン方法選択</h1>
+
+                    <div className="mode-selection">
+                        <button
+                            className="btn mode-btn Google"
+                            onClick={handleGoogle}
+                            style={{ flex: 1, minWidth: '120px' }} // 左右同じ幅に
+                        >
+                            <span className="mode-title">Googleでログイン</span>
+                        </button>
+
+                        <button
+                            className="btn mode-btn Anonymous"
+                            onClick={handleAnonymous}
+                            style={{ flex: 1, minWidth: '120px' }} // 左右同じ幅に
+                        >
+                            <span className="mode-title">匿名でログイン</span>
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        const signInWithGoogle = async () => {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            await auth.signInWithPopup(provider);
+        };
+
+        const signInAnonymously = async () => {
+            await auth.signInAnonymously();
+        };
+
+        const signOut = async () => {
+            await auth.signOut();
+        };
+
+        // --- Main App ---
+
+        function App() {
+            const [user, setUser] = useState(null);
+            const [screen, setScreen] = useState('home');
+            const [gameMode, setGameMode] = useState(null); // 'solo' or 'multi'
+            const [maxCount, setMaxCount] = useState(10);
+            const [quizSet, setQuizSet] = useState([]);
+            const [selectedCategories, setSelectedCategories] = useState(CATEGORIES);
+            const [score, setScore] = useState(0);
+            const [maxStreak, setMaxStreak] = useState(0);
+            const [history, setHistory] = useState([]);
+
+            const [isPracticeMode, setIsPracticeMode] = useState(false);
+
+            // Multi player state
+            const [playerName, setPlayerName] = useState('');
+            const [players, setPlayers] = useState([]);
+            const [multiQuestions, setMultiQuestions] = useState([]);
+            const [multiRankings, setMultiRankings] = useState([]);
+
+            const startSoloQuiz = (cats, count) => {
+                if (typeof QUESTIONS === 'undefined') {
+                    alert("問題データの読み込みに失敗しました。questions.jsが正しく配置されているか確認してください。");
+                    return;
+                }
+
+                const filtered = QUESTIONS.filter(q =>
+                    cats.includes(q.category)
+                ).sort(() => Math.random() - 0.5);
+
+                if (filtered.length === 0) {
+                    alert("選択された条件に一致する問題が見つかりませんでした。");
+                    return;
+                }
+
+                const finalSet = filtered.slice(0, Math.min(count, filtered.length));
+
+                setQuizSet(finalSet);
+                setSelectedCategories(cats);
+                setMaxCount(count);
+                setScore(0);
+                setMaxStreak(0);
+                setHistory([]);
+                setGameMode('solo');
+                setScreen(isPracticeMode ? 'quiz' : 'countdown');
+            };
+
+            const startMultiMode = (name) => {
+                setPlayerName(name);
+                setGameMode('multi');
+                setMultiQuestions([]); // クリア
+
+                // Socket.io接続
+                socket = io();
+
+                socket.on('connect', () => {
+                    socket.emit('joinMulti', { name: name });
+                });
+
+                // サーバーから質問提供依頼が来た場合のみ問題を生成して送信
+                socket.on('requestQuestions', () => {
+                    const filtered = QUESTIONS.sort(() => Math.random() - 0.5).slice(0, 10);
+                    socket.emit('initGameWithQuestions', { questions: filtered });
+                });
+
+                socket.on('playerDisconnected', (data) => {
+                    setPlayers(prev => prev.map(p =>
+                        p.id === data.playerId ? { ...p, isCPU: true, isDisconnected: true } : p
+                    ));
+                });
+
+                socket.on('lobbyUpdate', (data) => {
+                    setPlayers(data.players);
+                });
+
+                socket.on('lobbyTimerUpdate', (data) => {
+                    // Timer updates handled in Lobby component
+                });
+
+                socket.on('gameStart', (data) => {
+                    setPlayers(data.players);
+                    if (data.questions) {
+                        setMultiQuestions(data.questions);
+                    }
+                    setScreen('multiQuiz');
+                });
+
+                socket.on('gameEnd', (data) => {
+                    setMultiRankings(data.rankings);
+                    setScreen('multiResult');
+                });
+
+                setScreen('lobby');
+            };
+
+            const finishQuiz = (finalScore, finalHistory, finalMaxStreak) => {
+                setScore(finalScore);
+                setHistory(finalHistory);
+                setMaxStreak(finalMaxStreak);
+                setScreen('result');
+            };
+
+            const retryQuiz = () => {
+                if (gameMode === 'solo') {
+                    startSoloQuiz(selectedCategories, maxCount);
+                }
+            };
+
+            const goHome = () => {
+                if (socket) {
+                    socket.disconnect();
+                    socket = null;
+                }
+                setGameMode(null);
+                setPlayers([]);
+                setScreen('home');
+            };
+
+            useEffect(() => {
+                const unsubscribe = auth.onAuthStateChanged(u => setUser(u));
+                return unsubscribe;
+            }, []);
+
+            if (!user) return <Login onLogin={setUser} />;
+
+            return (
+                <div>
+                    {!user ? (
+                        // ログインしていなければ Login コンポーネントだけ表示
+                        <Login onLogin={(u) => setUser(u)} />
+                    ) : (
+                        <>
+                            {/* ログイン後は通常の画面表示 */}
+                            {screen === 'home' && (
+                                <Home
+                                    onStartSolo={startSoloQuiz}
+                                    onStartMulti={startMultiMode}
+                                    categories={CATEGORIES}
+                                    isPracticeMode={isPracticeMode}
+                                    setIsPracticeMode={setIsPracticeMode}
+                                />
+                            )}
+                            {screen === 'lobby' && (
+                                <Lobby
+                                    playerName={playerName}
+                                    players={players}
+                                    onCancel={goHome}
+                                />
+                            )}
+                            {screen === 'countdown' && (
+                                <Countdown onFinish={() => setScreen('quiz')} />
+                            )}
+                            {screen === 'quiz' && (
+                                <Quiz
+                                    questions={quizSet}
+                                    onFinish={finishQuiz}
+                                    categories={selectedCategories}
+                                    isPracticeMode={isPracticeMode}
+                                />
+                            )}
+                            {screen === 'multiQuiz' && (
+                                <MultiQuiz
+                                    questions={multiQuestions}
+                                    players={players}
+                                    playerName={playerName}
+                                    onHome={goHome}
+                                />
+                            )}
+                            {screen === 'result' && (
+                                <Result
+                                    score={score}
+                                    streak={maxStreak}
+                                    history={history}
+                                    onRetry={retryQuiz}
+                                    onHome={goHome}
+                                    isPracticeMode={isPracticeMode}
+                                />
+                            )}
+                            {screen === 'multiResult' && (
+                                <MultiResult
+                                    rankings={multiRankings}
+                                    playerName={playerName}
+                                    onHome={goHome}
+                                />
+                            )}
+                        </>
+                    )}
+                </div>
+            );
+        }
+        ReactDOM.render(<App />, document.getElementById("root"));
+
+        // --- Components ---
+
+        function Home({ onStartSolo, onStartMulti, categories, isPracticeMode, setIsPracticeMode }) {
+            const [mode, setMode] = useState(null); // null, 'solo', 'multi'
+            const [questionCount, setQuestionCount] = useState(10);
+            const [localSelectedCats, setLocalSelectedCats] = useState(categories);
+            const [multiPlayerName, setMultiPlayerName] = useState('');
+
+            const toggleCategory = (cat) => {
+                setLocalSelectedCats(prev =>
+                    prev.includes(cat)
+                        ? prev.filter(c => c !== cat)
+                        : [...prev, cat]
+                );
+            };
+
+            if (mode === null) {
+                return (
+                    <div className="card">
+                        <button
+                            className="btn outline logout-btn"
+                            onClick={() => auth.signOut()}
+                        >
+                            ログアウト
+                        </button>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 'bold', marginBottom: '0.5rem' }}>Fundamental Information Technology Engineer</div>
+                        <h1>FE Speed Quiz</h1>
+                        <p style={{ color: 'var(--text-dim)', marginBottom: '1.5rem', lineHeight: '1.6' }}>
+                            知識を最速でアウトプットせよ。<br />
+                            プレイモードを選択してください。
+                        </p>
+
+                        <div className="mode-selection">
+                            <button className="btn mode-btn solo" onClick={() => setMode('solo')}>
+                                <span className="mode-icon">🎯</span>
+                                <span className="mode-title">ソロプレイ</span>
+                                <span className="mode-desc">一人で挑戦<br />問題数・カテゴリ選択可</span>
+                            </button>
+                            <button className="btn mode-btn multi" onClick={() => setMode('multi')}>
+                                <span className="mode-icon">👥</span>
+                                <span className="mode-title">マルチプレイ</span>
+                                <span className="mode-desc">4人対戦<br />最速回答者に高得点</span>
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (mode === 'multi') {
+                return (
+                    <div className="card">
+                        <h1 style={{ fontSize: '1.8rem' }}>👥 マルチプレイ</h1>
+                        <p style={{ color: 'var(--text-dim)', marginBottom: '1.5rem' }}>
+                            4人対戦で早押しクイズ！<br />
+                            最大15秒待機後、空きはCPUで補充されます。
+                        </p>
+
+                        <div className="settings-area">
+                            <label>プレイヤー名を入力</label>
+                            <input
+                                type="text"
+                                className="name-input"
+                                placeholder="あなたの名前"
+                                value={multiPlayerName}
+                                onChange={(e) => setMultiPlayerName(e.target.value)}
+                                maxLength={10}
+                            />
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: '0.5rem' }}>
+                                ※ 10文字以内
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                            <button className="btn outline" style={{ flex: 1 }} onClick={() => setMode(null)}>
+                                戻る
+                            </button>
+                            <button
+                                className="btn primary"
+                                style={{ flex: 2 }}
+                                disabled={!multiPlayerName.trim()}
+                                onClick={() => onStartMulti(multiPlayerName.trim() || 'プレイヤー')}
+                            >
+                                マッチング開始
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Solo mode settings
+            return (
+                <div className="card">
+                    <h1 style={{ fontSize: '1.8rem' }}>🎯 ソロプレイ</h1>
+                    <p style={{ color: 'var(--text-dim)', marginBottom: '1rem' }}>
+                        回答時間と連続正解数でスコアがアップします。
+                    </p>
+
+                    <div className="settings-area">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <label>分野の選択 (複数選択可)</label>
+                            <div style={{ fontSize: '0.8rem' }}>
+                                <span className="link-text" onClick={() => setLocalSelectedCats(categories)}>全選択</span>
+                                <span style={{ margin: '0 0.5rem', color: '#ccc' }}>|</span>
+                                <span className="link-text" onClick={() => setLocalSelectedCats([])}>全解除</span>
+                            </div>
+                        </div>
+                        <div className="category-grid" style={{ marginBottom: '1.5rem', marginTop: '0.5rem' }}>
+                            {categories.map(cat => (
+                                <button
+                                    key={cat}
+                                    className={`btn ${localSelectedCats.includes(cat) ? 'primary' : ''}`}
+                                    onClick={() => toggleCategory(cat)}
+                                >
+                                    {cat}
+                                </button>
+                            ))}
+                        </div>
+
+                        <label>問題数設定 (10 - 100問)</label>
+                        <div className="settings-input-group">
+                            <input
+                                type="range"
+                                min="10"
+                                max="100"
+                                step="10"
+                                value={questionCount}
+                                onChange={(e) => setQuestionCount(parseInt(e.target.value))}
+                            />
+                            <div className="count-display">{questionCount}</div>
+                        </div>
+
+                        <div className="switch-group">
+                            <span className="switch-label">練習モード (制限時間なし)</span>
+                            <label className="switch">
+                                <input
+                                    type="checkbox"
+                                    checked={isPracticeMode}
+                                    onChange={(e) => setIsPracticeMode(e.target.checked)}
+                                />
+                                <span className="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                        <button className="btn outline" style={{ flex: 1 }} onClick={() => setMode(null)}>
+                            戻る
+                        </button>
+                        <button
+                            className="btn primary"
+                            style={{ flex: 2 }}
+                            disabled={localSelectedCats.length === 0}
+                            onClick={() => onStartSolo(localSelectedCats, questionCount)}
+                        >
+                            {localSelectedCats.length === 0
+                                ? "分野を選択してください"
+                                : "クイズをスタート"
+                            }
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        function Lobby({ playerName, players, onCancel }) {
+            const [timeLeft, setTimeLeft] = useState(15);
+
+            useEffect(() => {
+                if (!socket) return;
+
+                // Capture socket instance for cleanup
+                const currentSocket = socket;
+
+                const handleTimerUpdate = (data) => {
+                    setTimeLeft(data.timeLeft);
+                };
+
+                currentSocket.on('lobbyTimerUpdate', handleTimerUpdate);
+
+                return () => {
+                    if (currentSocket) {
+                        currentSocket.off('lobbyTimerUpdate', handleTimerUpdate);
+                    }
+                };
+            }, []);
+
+            const getPlayerSlot = (index) => {
+                const player = players[index];
+                if (!player) {
+                    return (
+                        <div className="player-slot">
+                            <div className="player-avatar">⏳</div>
+                            <div className="waiting-text">待機中...</div>
+                        </div>
+                    );
+                }
+
+                // Use socket.id to identify the current user reliably
+                const currentSocketId = socket ? socket.id : null;
+                const isYou = player.id === currentSocketId;
+                const slotClass = `player-slot filled ${player.isCPU ? 'cpu' : ''} ${isYou ? 'you' : ''}`;
+
+                return (
+                    <div className={slotClass}>
+                        <div className="player-avatar">{player.isCPU ? '🤖' : '👤'}</div>
+                        <div className="player-name">{player.name}</div>
+                        {isYou && <div className="player-tag">あなた</div>}
+                        {player.isCPU && <div className="player-tag">CPU</div>}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="card lobby-container">
+                    <h1 style={{ fontSize: '1.8rem' }}>🎮 マッチング中</h1>
+                    <p style={{ color: 'var(--text-dim)' }}>他のプレイヤーを待っています...</p>
+
+                    <div className="lobby-timer">{timeLeft}</div>
+
+                    <div className="lobby-players">
+                        {[0, 1, 2, 3].map(i => (
+                            <div key={i}>
+                                {getPlayerSlot(i)}
+                            </div>
+                        ))}
+                    </div>
+
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '1.5rem' }}>
+                        {players.length}/4 人参加中<br />
+                        <span style={{ fontSize: '0.75rem' }}>※ 時間切れの場合はCPUが参加します</span>
+                    </p>
+
+                    <button className="btn outline" onClick={onCancel}>
+                        キャンセル
+                    </button>
+                </div>
+            );
+        }
+
+        function Countdown({ onFinish }) {
+            const [count, setCount] = useState(3);
+
+            useEffect(() => {
+                if (count > 0) {
+                    const timer = setTimeout(() => setCount(count - 1), 1000);
+                    return () => clearTimeout(timer);
+                } else {
+                    const timer = setTimeout(onFinish, 500);
+                    return () => clearTimeout(timer);
+                }
+            }, [count]);
+
+            return (
+                <div className="countdown-overlay">
+                    <div className="countdown-number" key={count}>
+                        {count > 0 ? count : 'START!'}
+                    </div>
+                </div>
+            );
+        }
+
+        function Quiz({ questions, onFinish, categories, isPracticeMode }) {
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [score, setScore] = useState(0);
+            const [streak, setStreak] = useState(0);
+            const [maxStreak, setMaxStreak] = useState(0);
+            const [timeLeft, setTimeLeft] = useState(10);
+            const [answered, setAnswered] = useState(false);
+            const [selectedIdx, setSelectedIdx] = useState(null);
+            const [history, setHistory] = useState([]);
+
+            const [currentPoints, setCurrentPoints] = useState(0);
+
+            const timerRef = useRef(null);
+
+            const currentQuestion = questions[currentIndex];
+
+            if (!currentQuestion) {
+                return (
+                    <div className="card">
+                        <p>問題の読み込み中にエラーが発生しました。</p>
+                        <button className="btn primary" onClick={() => onFinish(0, [], 0)}>ホームに戻る</button>
+                    </div>
+                );
+            }
+
+            useEffect(() => {
+                if (!answered && !isPracticeMode) {
+                    timerRef.current = setInterval(() => {
+                        setTimeLeft(prev => {
+                            if (prev <= 0.1) {
+                                handleAnswer(null);
+                                return 0;
+                            }
+                            return prev - 0.1;
+                        });
+                    }, 100);
+                }
+                return () => clearInterval(timerRef.current);
+            }, [currentIndex, answered, isPracticeMode]);
+
+            const handleAnswer = (idx) => {
+                if (answered) return;
+                clearInterval(timerRef.current);
+                setAnswered(true);
+                setSelectedIdx(idx);
+
+                const isCorrect = idx === currentQuestion.answer;
+                let points = 0;
+                let newStreak = streak;
+
+                if (!isPracticeMode && isCorrect) {
+                    newStreak += 1;
+                    const speedMultiplier = Math.max(0.2, timeLeft / 10);
+                    points = Math.floor(1000 * speedMultiplier) + (newStreak - 1) * 100;
+                    setScore(prev => prev + points);
+                    setStreak(newStreak);
+                    if (newStreak > maxStreak) setMaxStreak(newStreak);
+                } else if (!isPracticeMode) {
+                    newStreak = 0;
+                    setStreak(0);
+                    if (idx !== null) {
+                        const penalty = 300;
+                        points = -penalty;
+                        setScore(prev => Math.max(0, prev - penalty));
+                    }
+                }
+                setCurrentPoints(points);
+
+                if (!isPracticeMode) {
+                    setTimeout(() => {
+                        goToNextQuestion(isCorrect, points, newStreak, idx);
+                    }, 1500);
+                }
+            };
+
+            const goToNextQuestion = (isCorrectArg, pointsArg, streakArg, userIdx) => {
+                const newHistoryItem = {
+                    question: currentQuestion.text,
+                    isCorrect: isCorrectArg,
+                    userAnswer: userIdx !== null ? currentQuestion.choices[userIdx] : (isPracticeMode ? "未回答" : "時間切れ"),
+                    correctAnswer: currentQuestion.choices[currentQuestion.answer],
+                    explanation: currentQuestion.explanation,
+                    source: currentQuestion.source
+                };
+
+                const updatedHistory = [...history, newHistoryItem];
+
+                if (currentIndex + 1 < questions.length) {
+                    setHistory(updatedHistory);
+                    setCurrentIndex(prev => prev + 1);
+                    setTimeLeft(10);
+                    setAnswered(false);
+                    setSelectedIdx(null);
+                    setCurrentPoints(0);
+                } else {
+                    onFinish(score + pointsArg, updatedHistory, Math.max(maxStreak, streakArg));
+                }
+            };
+
+            return (
+                <div className="card" style={{ position: 'relative' }}>
+                    <div className="category-label">
+                        {categories.length === CATEGORIES.length ? "すべての分野" : categories.join(", ")} | {currentIndex + 1} / {questions.length}
+                    </div>
+
+                    <div style={{ marginTop: '1rem' }}>
+                        <div className="score-info">
+                            <span style={{ color: 'var(--primary)' }}>
+                                {!isPracticeMode && `${score.toLocaleString()} PTS`}
+                            </span>
+                            <span>
+                                {!isPracticeMode && streak > 1 && <span className="streak-badge">{streak} COMBO!</span>}
+                            </span>
+                        </div>
+                        {!isPracticeMode && (
+                            <div className="timer-container">
+                                <div className="timer-bar" style={{
+                                    width: `${(timeLeft / 10) * 100}%`
+                                }}></div>
+                            </div>
+                        )}
+                        <div className="question-text">
+                            {currentQuestion.text}
+                        </div>
+                        <div className="choices-list">
+                            {currentQuestion.choices.map((choice, i) => {
+                                let className = "choice-btn";
+                                if (answered) {
+                                    if (i === currentQuestion.answer) className += " correct";
+                                    else if (i === selectedIdx) className += " wrong";
+                                }
+                                return (
+                                    <button
+                                        key={i}
+                                        className={className}
+                                        onClick={() => handleAnswer(i)}
+                                        disabled={answered}
+                                    >
+                                        <span style={{ fontWeight: 800, marginRight: '1rem', color: 'var(--primary-light)' }}>
+                                            {['ア', 'イ', 'ウ', 'エ'][i]}
+                                        </span>
+                                        {choice}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {answered && (
+                            <div style={{ marginTop: '1.5rem' }}>
+                                <div className="explanation-box" style={{ whiteSpace: 'pre-wrap' }}>
+                                    <strong>解説:</strong><br />
+                                    {currentQuestion.explanation}
+                                </div>
+                                {isPracticeMode && (
+                                    <button
+                                        className="btn primary"
+                                        style={{ width: '100%', marginTop: '1rem', padding: '1.25rem' }}
+                                        onClick={() => {
+                                            const isCorrect = selectedIdx === currentQuestion.answer;
+                                            goToNextQuestion(isCorrect, 0, 0);
+                                        }}
+                                    >
+                                        次の問題へ
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function MultiQuiz({ questions, players: initialPlayers, playerName, onHome }) {
+            const [currentIndex, setCurrentIndex] = useState(-1);
+            const [players, setPlayers] = useState(initialPlayers);
+            const [timeLeft, setTimeLeft] = useState(30);
+            const [displayedText, setDisplayedText] = useState('');
+            const [isTyping, setIsTyping] = useState(true);
+
+            // 早押し関連
+            const [currentAnswerer, setCurrentAnswerer] = useState(null);
+            const [answerTimeLeft, setAnswerTimeLeft] = useState(5);
+            const [showChoices, setShowChoices] = useState(false);
+            const [myHasLostRight, setMyHasLostRight] = useState(false);
+            const [selectedIdx, setSelectedIdx] = useState(null);
+
+            // 結果表示
+            const [resultMessage, setResultMessage] = useState(null);
+            const [correctAnswer, setCorrectAnswer] = useState(null);
+            const [isPaused, setIsPaused] = useState(false);
+
+            const currentQuestion = questions[currentIndex];
+            const myId = socket ? socket.id : null;
+
+            // タイプライター効果用のref
+            const typeIntervalRef = useRef(null);
+            const textIndexRef = useRef(0);
+
+            // 問題変更時のリセット
+            useEffect(() => {
+                if (currentQuestion) {
+                    textIndexRef.current = 0;
+                    setDisplayedText('');
+                }
+            }, [currentIndex]);
+
+            // タイプライター効果（再生・一時停止制御）
+            useEffect(() => {
+                if (!currentQuestion) return;
+
+                // バズイン中または一時停止中はタイマーを止める（カーソルも消す）
+                if (currentAnswerer || isPaused) {
+                    setIsTyping(false);
+                    return;
+                }
+
+                const text = currentQuestion.text;
+
+                // 既に全文表示済みの場合は何もしない
+                if (textIndexRef.current >= text.length) {
+                    setIsTyping(false);
+                    return;
+                }
+
+                // タイマー開始
+                setIsTyping(true);
+                typeIntervalRef.current = setInterval(() => {
+                    if (textIndexRef.current < text.length) {
+                        textIndexRef.current++;
+                        setDisplayedText(text.substring(0, textIndexRef.current));
+                    } else {
+                        setIsTyping(false);
+                        clearInterval(typeIntervalRef.current);
+                    }
+                }, 50);
+
+                return () => clearInterval(typeIntervalRef.current);
+            }, [currentIndex, currentAnswerer, isPaused]);
+
+            useEffect(() => {
+                if (!socket) return;
+
+                // Capture socket instance for cleanup
+                const currentSocket = socket;
+
+                const handleTimerUpdate = (data) => {
+                    setTimeLeft(data.timeLeft);
+                };
+
+                const handleAnswerTimerUpdate = (data) => {
+                    setAnswerTimeLeft(data.timeLeft);
+                };
+
+                const handlePlayerBuzzedIn = (data) => {
+                    setCurrentAnswerer(data);
+                    setAnswerTimeLeft(data.answerTimeLeft);
+                    setIsPaused(true);
+
+                    // 自分がバズインした場合は選択肢を表示
+                    if (data.playerId === myId) {
+                        setShowChoices(true);
+                    }
+                };
+
+                const handleAnswerResult = (data) => {
+                    if (data.isCorrect) {
+                        setResultMessage({
+                            type: 'correct',
+                            text: `🎉 ${data.playerName} が正解！`,
+                            points: data.points
+                        });
+                        setCorrectAnswer(data.correctAnswer);
+                    } else {
+                        setResultMessage({
+                            type: 'wrong',
+                            text: `❌ ${data.playerName} は不正解...`
+                        });
+                        // 自分が間違えた場合
+                        if (data.playerId === myId) {
+                            setMyHasLostRight(true);
+                        }
+                    }
+                    setCurrentAnswerer(null);
+                    setShowChoices(false);
+                };
+
+                const handleAnswerTimeout = (data) => {
+                    setResultMessage({
+                        type: 'timeout',
+                        text: `⏰ ${data.playerName} は時間切れ...`
+                    });
+                    if (data.playerId === myId) {
+                        setMyHasLostRight(true);
+                    }
+                    setCurrentAnswerer(null);
+                    setShowChoices(false);
+                };
+
+                const handleResumeQuestion = (data) => {
+                    setTimeLeft(data.timeLeft);
+                    setIsPaused(false);
+                    setCurrentAnswerer(null);
+                    setResultMessage(null);
+                };
+
+                const handleAllPlayersLost = (data) => {
+                    setResultMessage({
+                        type: 'timeout',
+                        text: '全員の回答権が失われました'
+                    });
+                    setCorrectAnswer(data.correctAnswer);
+                };
+
+                const handleTimeUp = (data) => {
+                    setResultMessage({
+                        type: 'timeout',
+                        text: '⏰ 時間切れ！'
+                    });
+                    setCorrectAnswer(data.correctAnswer);
+                };
+
+                const handleNextQuestion = (data) => {
+                    // 前の問題のインターバルを確実にクリア
+                    if (typeIntervalRef.current) {
+                        clearInterval(typeIntervalRef.current);
+                    }
+                    textIndexRef.current = 0;
+
+                    setCurrentIndex(data.questionIndex);
+                    if (data.question) {
+                        // 問題データはサーバーから来る場合もある
+                    }
+                    setPlayers(data.players);
+                    setTimeLeft(30);
+                    setDisplayedText('');
+                    setIsTyping(true);
+                    setCurrentAnswerer(null);
+                    setAnswerTimeLeft(5);
+                    setShowChoices(false);
+                    setMyHasLostRight(false);
+                    setSelectedIdx(null);
+                    setResultMessage(null);
+                    setCorrectAnswer(null);
+                    setIsPaused(false);
+                };
+
+                currentSocket.on('questionTimerUpdate', handleTimerUpdate);
+                currentSocket.on('answerTimerUpdate', handleAnswerTimerUpdate);
+                currentSocket.on('playerBuzzedIn', handlePlayerBuzzedIn);
+                currentSocket.on('answerResult', handleAnswerResult);
+                currentSocket.on('answerTimeout', handleAnswerTimeout);
+                currentSocket.on('resumeQuestion', handleResumeQuestion);
+                currentSocket.on('allPlayersLost', handleAllPlayersLost);
+                currentSocket.on('timeUp', handleTimeUp);
+                currentSocket.on('timeUp', handleTimeUp);
+                currentSocket.on('nextQuestion', handleNextQuestion);
+
+                // リスナー設定完了後に準備完了を通知
+                currentSocket.emit('clientReady');
+
+                return () => {
+                    if (currentSocket) {
+                        currentSocket.off('questionTimerUpdate', handleTimerUpdate);
+                        currentSocket.off('answerTimerUpdate', handleAnswerTimerUpdate);
+                        currentSocket.off('playerBuzzedIn', handlePlayerBuzzedIn);
+                        currentSocket.off('answerResult', handleAnswerResult);
+                        currentSocket.off('answerTimeout', handleAnswerTimeout);
+                        currentSocket.off('resumeQuestion', handleResumeQuestion);
+                        currentSocket.off('allPlayersLost', handleAllPlayersLost);
+                        currentSocket.off('timeUp', handleTimeUp);
+                        currentSocket.off('nextQuestion', handleNextQuestion);
+                    }
+                };
+            }, [myId]);
+
+            const handleBuzzIn = () => {
+                if (currentAnswerer || myHasLostRight || correctAnswer !== null) return;
+                socket.emit('buzzIn');
+            };
+
+            const handleAnswer = (idx) => {
+                if (selectedIdx !== null) return;
+                setSelectedIdx(idx);
+                socket.emit('submitAnswer', { answerIndex: idx });
+            };
+
+            if (currentIndex === -1 || !currentQuestion) {
+                return (
+                    <div className="card">
+                        <p className="connecting">ゲームを開始しています...</p>
+                    </div>
+                );
+            }
+
+            const canBuzz = !currentAnswerer && !myHasLostRight && correctAnswer === null;
+            const isMyTurn = currentAnswerer?.playerId === myId;
+
+            return (
+                <div className="card" style={{ position: 'relative' }}>
+                    <div className="category-label">
+                        マルチプレイ | {currentIndex + 1} / {questions.length}
+                    </div>
+
+                    <div style={{ marginTop: '1rem' }}>
+                        {/* Players Status Bar */}
+                        <div className="player-status-bar">
+                            {players.map(player => {
+                                const isYou = player.id === myId;
+                                const isAnswering = currentAnswerer?.playerId === player.id;
+                                const hasLost = player.hasLostRight || (isYou && myHasLostRight);
+
+                                let className = "player-status-item";
+                                if (isYou) className += " you";
+                                if (isAnswering) className += " answering";
+                                if (hasLost) className += " lost";
+
+                                return (
+                                    <div key={player.id} className={className}>
+                                        <span style={{ fontSize: '0.75rem', color: player.isDisconnected ? 'red' : 'var(--text-dim)', fontWeight: 600 }}>
+                                            {player.isCPU ? '🤖' : '👤'} {player.name}
+                                            {isYou && ' (あなた)'}
+                                        </span>
+                                        <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--primary)' }}>
+                                            {player.score || 0}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Timer - pauses when someone is answering */}
+                        <div className="timer-container" style={{ opacity: isPaused ? 0.3 : 1 }}>
+                            <div className="timer-bar" style={{
+                                width: `${(timeLeft / 30) * 100}%`
+                            }}></div>
+                        </div>
+
+                        {/* Question with Typewriter Effect */}
+                        <div className="typewriter-text">
+                            {displayedText}
+                            {isTyping && <span className="typewriter-cursor"></span>}
+                        </div>
+
+                        {/* Result Message */}
+                        {resultMessage && (
+                            <div className={`result-message ${resultMessage.type}`}>
+                                {resultMessage.text}
+                                {resultMessage.points && <div>+{resultMessage.points} pts!</div>}
+                            </div>
+                        )}
+
+                        {/* Show correct answer after result */}
+                        {correctAnswer !== null && (
+                            <div style={{ marginTop: '1rem' }}>
+                                <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: 'var(--success)' }}>
+                                    正解: {['ア', 'イ', 'ウ', 'エ'][correctAnswer]}. {currentQuestion.choices[correctAnswer]}
+                                </div>
+                                <div className="explanation-box" style={{ whiteSpace: 'pre-wrap' }}>
+                                    <strong>解説:</strong><br />
+                                    {currentQuestion.explanation}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Answering Overlay - when someone else is answering */}
+                        {currentAnswerer && !isMyTurn && (
+                            <div className="answering-overlay">
+                                <div className="answering-text">
+                                    🔔 {currentAnswerer.playerName} が回答中....
+                                </div>
+                                <div className="answering-timer">{answerTimeLeft}</div>
+                            </div>
+                        )}
+
+                        {/* Buzz Button or Choices */}
+                        {correctAnswer === null && !resultMessage && (
+                            <>
+                                {!showChoices ? (
+                                    <div style={{ textAlign: 'center' }}>
+                                        <button
+                                            className="buzz-button"
+                                            onClick={handleBuzzIn}
+                                            disabled={!canBuzz}
+                                        >
+                                            {myHasLostRight ? '回答権なし' :
+                                                currentAnswerer ? '回答中...' : '🔔 回答！'}
+                                        </button>
+                                        {myHasLostRight && (
+                                            <p style={{ color: 'var(--error)', fontWeight: 600 }}>
+                                                この問題では回答権を失いました
+                                            </p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="choices-container">
+                                        {/* Answer Timer */}
+                                        <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                                            <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)', fontWeight: 600 }}>
+                                                残り時間:
+                                            </span>
+                                            <span style={{ fontSize: '2rem', fontWeight: 800, color: answerTimeLeft <= 2 ? 'var(--error)' : 'var(--warning)', marginLeft: '0.5rem' }}>
+                                                {answerTimeLeft}
+                                            </span>
+                                        </div>
+                                        <div className="answer-timer-bar">
+                                            <div className="answer-timer-fill" style={{
+                                                width: `${(answerTimeLeft / 5) * 100}%`
+                                            }}></div>
+                                        </div>
+
+                                        {/* Choices */}
+                                        <div className="choices-list">
+                                            {currentQuestion.choices.map((choice, i) => {
+                                                let className = "choice-btn";
+                                                if (selectedIdx === i) className += " selected";
+                                                return (
+                                                    <button
+                                                        key={i}
+                                                        className={className}
+                                                        onClick={() => handleAnswer(i)}
+                                                        disabled={selectedIdx !== null}
+                                                    >
+                                                        <span style={{ fontWeight: 800, marginRight: '1rem', color: 'var(--primary-light)' }}>
+                                                            {['ア', 'イ', 'ウ', 'エ'][i]}
+                                                        </span>
+                                                        {choice}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function Result({ score, streak, history, onRetry, onHome, isPracticeMode }) {
+            const correctCount = history.filter(h => h.isCorrect).length;
+            const accuracy = Math.round((correctCount / history.length) * 100);
+
+            return (
+                <div className="card">
+                    <h2 style={{ fontSize: '1.1rem', color: 'var(--text-dim)' }}>
+                        {isPracticeMode ? "練習完了" : "リザルト"}
+                    </h2>
+                    {!isPracticeMode && <div className="result-score">{score.toLocaleString()}</div>}
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '2.5rem', marginTop: isPracticeMode ? '1.5rem' : '0' }}>
+                        <div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>正解率</div>
+                            <div style={{ fontWeight: 800, fontSize: '1.2rem' }}>{accuracy}%</div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>正解数</div>
+                            <div style={{ fontWeight: 800, fontSize: '1.2rem' }}>{correctCount} / {history.length}</div>
+                        </div>
+                        {!isPracticeMode && (
+                            <div>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>MAXコンボ</div>
+                                <div style={{ fontWeight: 800, fontSize: '1.2rem' }}>{streak}</div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="action-group">
+                        <button className="btn outline" onClick={onRetry}>もう一度挑戦</button>
+                        <button className="btn primary" onClick={onHome}>ホームに戻る</button>
+                    </div>
+
+                    <div style={{ marginTop: '1rem' }}>
+                        <h3 style={{ marginBottom: '2rem', fontSize: '1.4rem', borderBottom: '2px solid var(--primary)', display: 'inline-block', paddingBottom: '0.5rem' }}>
+                            復習
+                        </h3>
+                        {history.map((h, i) => (
+                            <div key={i} className="review-item">
+                                <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{
+                                        padding: '4px 10px',
+                                        borderRadius: '8px',
+                                        fontSize: '0.75rem',
+                                        background: h.isCorrect ? '#ecfdf5' : '#fff1f2',
+                                        color: h.isCorrect ? 'var(--success)' : 'var(--error)',
+                                        fontWeight: 800,
+                                        border: `1px solid ${h.isCorrect ? '#d1fae5' : '#ffe4e6'}`
+                                    }}>
+                                        問 {i + 1} {h.isCorrect ? '正解' : '不正解'}
+                                    </span>
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>{h.source}</span>
+                                </div>
+                                <div className="review-q">{h.question}</div>
+                                <div style={{ fontSize: '0.9rem', marginBottom: '0.8rem' }}>
+                                    <span style={{ color: 'var(--text-dim)' }}>あなたの回答: </span>
+                                    <span style={{ color: h.isCorrect ? 'var(--success)' : 'var(--error)', fontWeight: 700 }}>{h.userAnswer}</span>
+                                    {!h.isCorrect && (
+                                        <div style={{ color: 'var(--success)', fontWeight: 700, marginTop: '4px' }}>
+                                            正解: {h.correctAnswer}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="explanation-box" style={{ background: '#f8fafc', border: 'none', borderRadius: '12px', whiteSpace: 'pre-wrap' }}>
+                                    {h.explanation}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="action-group" style={{ marginTop: '2rem' }}>
+                        <button className="btn outline" onClick={onRetry}>もう一度挑戦</button>
+                        <button className="btn primary" onClick={onHome}>ホームに戻る</button>
+                    </div>
+                </div>
+            );
+        }
+
+        function MultiResult({ rankings, playerName, onHome }) {
+            const myId = socket ? socket.id : null;
+
+            return (
+                <div className="card">
+                    <h1 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>🏆 結果発表</h1>
+                    <p style={{ color: 'var(--text-dim)', marginBottom: '2rem' }}>マルチプレイ終了！</p>
+
+                    <div className="ranking-list">
+                        {rankings.map((player, index) => {
+                            // Use socket.id to identify the user correctly
+                            const isYou = player.id === myId;
+                            let className = `ranking-item rank-${player.rank}`;
+                            if (isYou) className += ' you';
+
+                            return (
+                                <div key={player.id} className={className}>
+                                    <div className="rank-number">
+                                        {player.rank === 1 ? '🥇' : player.rank === 2 ? '🥈' : player.rank === 3 ? '🥉' : player.rank}
+                                    </div>
+                                    <div className="ranking-player-info">
+                                        <div className="ranking-player-name">
+                                            {player.isCPU ? '🤖 ' : ''}{player.name}
+                                            {isYou && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--primary)', background: '#e0f2fe', padding: '2px 8px', borderRadius: '4px' }}>あなた</span>}
+                                        </div>
+                                        <div className="ranking-player-stats">
+                                            {player.correctCount} 問正解
+                                        </div>
+                                    </div>
+                                    <div className="ranking-score">
+                                        {player.score.toLocaleString()} pts
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <button className="btn primary" style={{ width: '100%', marginTop: '2rem' }} onClick={onHome}>
+                        ホームに戻る
+                    </button>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "fe-quiz-multiplayer",
+  "version": "1.0.0",
+  "description": "FE Exam Speed Quiz with Multiplayer Support",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.22.1",
+    "socket.io": "^4.7.2"
+  }
+}
