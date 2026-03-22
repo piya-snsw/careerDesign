@@ -39,31 +39,6 @@ Firebase Firestore を利用した超低遅延の早押し判定。
 
 ---
 
-## 📦 セットアップ
-
-### リポジトリをクローン
-```bash
-git clone https://github.com/your-username/quiz-battle-express.git
-cd quiz-battle-express
-依存関係のインストール
-npm install
-Firebase の設定
-
-src/firebase.js に自身の Firebase プロジェクトの構成情報を貼り付けてください。
-
-ローカル実行
-npm run dev
-🌐 デプロイ方法
-
-本アプリは Firebase Hosting に最適化されています。
-
-firebase deploy
-📖 クイズデータ構造
-{
-  q: '関係データベースの操作において、重複する行を取り除く操作はどれか？',
-  answer: '射影',
-  options: ['選択', '射影', '結合', '直積']
-}
 ⚙️ システムロジックのこだわり
 🤖 ボットの動的思考
 
